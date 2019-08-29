@@ -208,8 +208,8 @@ class Dashboard():
         self.client = client
         self.sheet_name = sheet_name
         self.workbook_name = workbook_name
-        self._projects = set()
-        self._project_managers = set()
+        self.projects = set()
+        self.project_managers = set()
         self._df = pd.DataFrame()
         self._new_data = {}
         self._editable_cells = []
@@ -222,18 +222,18 @@ class Dashboard():
         self.bst = Bst10(path_to_bst, dashboard=self)
         self.bst.load()
         if self._df.empty:
-            self.projects = self.bst.projects
-            self.project_managers = self.bst.project_managers
-            self._df = self.bst.df
+            self._df = self.bst._df
         else:
             self._load_conflict_handler()
+        self.projects = self.bst.projects
+        self.project_managers = self.bst.project_managers
     
     def _load_conflict_handler(self, bst=True, other_df=None):
         if bst:
             proj_to_drop = self.projects.difference(self.bst.projects)
             proj_to_append = self.bst.projects.difference(self.projects)
             self._df.drop(labels=proj_to_drop)
-            self._df.append(self.bst.df.loc[proj_to_append])
+            self._df = self._df.append(self.bst._df.loc[proj_to_append])
             self.new_data['job'] = proj_to_append
             self.new_data['pm'] = set(self._df.loc[proj_to_append, PM].unique())
         else:
@@ -245,25 +245,22 @@ class Dashboard():
             non_bst_cols = [x for x in COL_ORDER if x not in BST_COLS]
             self._df.loc[proj_to_keep, non_bst_cols] = other_df[non_bst_cols]
 
-
-
     def load_prev_dashboard(self, path_to_dashboard):
         df = pd.read_excel(path_to_dashboard, index_col=0)
         df = self._load_helper(df)
         if self._df.empty:
             self._df = df
+            self.projects = set(self._df.index.values)
+            self.project_managers = set(self._df[PM].unique())
         else:
             self._load_conflict_handler(bst=False, other_df=df)
-
     
     def _load_helper(self, df):
-        df = df.loc[df.index.dropna()]
-        self._index_handler(df)
+        df = self._index_handler(df)
         df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
-        df.sort_index(inplace=True)
-        df.sort_index(axis=1, inplace=True)
-        self._add_missing_col(df)
-        self._date_time_handler(df)
+        df = self._add_missing_col(df)
+        df = self._date_time_handler(df)
+        df = self.exclude(df)
         return df[COL_ORDER]
 
     def load_pm(self, path, all_in_path=True,):
@@ -273,13 +270,32 @@ class Dashboard():
                 if XLSX in f_name and TMP_FILE not in f_name:
                     self._load_pm(file)
         else:
-            self._load_pm(file)
-    
-    def exclude(self, exclusions):
-        for key, val in exclusions.items():
+            self._load_pm(path)
+
+    def _load_pm(self, path):
+        df = pd.read_excel(path, index_col=0)
+        dups = self._index_dup_check(df, path)
+        if dups:
+            df = self._load_helper(df)
+            self._df.update(df,overwrite=True, errors='ignore')
+
+    def _index_dup_check(self, df, path):
+        len_idx_init = len(df.index)
+        len_idx_fin = len(set(df.index))
+        if len_idx_init != len_idx_fin:
+            import warnings
+            msg1 = f'Duplicate index values. Unique indices: {len_idx_init}, Total indicies: {len_idx_fin}. Skipping {path.name}'
+            warnings.warn(msg1, Warning) 
+            return False
+        return True
+
+    def exclude(self, df):
+        for key, val in EXCLUSIONS.items():
             if key == JOB_NUM:
-                continue
-            self._df = self._df[~self._df[key].isin(val)]
+                df = df[~df.index.isin(val)]
+            else:
+                df = df[~df[key].isin(val)]
+        return df
 
     def export(self, path, pm=True, to_excel=True):
         if to_excel:
@@ -381,14 +397,13 @@ class Dashboard():
                         sheet.write(row, col, value, write_format)
 
         _wr, _wb, _ws = _setup_excel()#Specify the header format
-        _ws.protect() #Lock all the cells
+        if pm:
+            _ws.protect() #Lock all the cells
         _header_format(_wb, _ws) #Format the header cells
         _data_validation(_ws, PHASE, PHASE_D_VAL)#Set up data validation
         _data_validation(_ws, SCH, SCHEDULE_D_VAL) 
         _data_validation(_ws, ACTION_BY, ACTION_D_VAL)
         if pm:
-            if "Gordon" in pm:
-                suck_eggs = True
             _format_cells(_wb, _ws, df=self._df[self._df[PM]==pm]) #Unlock the desired range of editable cells and paste in data
         else:
             _format_cells(_wb, _ws, df=self._df)
@@ -407,7 +422,6 @@ class Dashboard():
         _col = self._df.columns.get_loc(col) + 1
         return 1, _col, self._df.shape[0] + 1, _col
     
-    
     def protected_cells(self, df):
         return [1, df.shape[0] + 1, 0, df.shape[1] + 1]
 
@@ -416,10 +430,7 @@ class Dashboard():
         modifier = [0, -1, 0, -1,]
         return [sum(x) for x in zip(self.protected_cells(self._df), modifier)]
 
-    def _load_pm(self, path):
-        df = pd.read_excel(path, index_col=0)
-        df = self._load_helper(df)
-        self._df.update(df,overwrite=True, errors='ignore')
+    
 
     def _index_handler(self, df):
         df = df[~df.index.duplicated(keep='first')]
@@ -429,8 +440,7 @@ class Dashboard():
         return df
 
     def _date_time_handler(self, df):
-        df[F_C_DATE].to_string(na_rep='')
-        df[C_C_DATE].to_string(na_rep='')
+        df[[C_C_DATE,F_C_DATE]] = df[[C_C_DATE,F_C_DATE]].astype(str)
         return df
 
     def _add_missing_col(self, df):
@@ -439,25 +449,7 @@ class Dashboard():
                 df[col] = ""
         return df
 
-    @property
-    def project_managers(self):
-        if self._df.empty:
-            return set()
-        else:
-            return set(self._df[PM].unique())
-    
-    @property
-    def projects(self):
-        if self._df.empty:
-            return set()
-        else:
-            return set(self._df.index.values)
-    # @property
-    # def new_data(self):
-    #     return {
-    #             'pm':self.bst.project_managers.difference(self.project_managers),
-    #             'job':self.bst.projects.difference(self.projects),
-    #         }
+
 
 class Bst10(Dashboard):
     DEFAULT_SHEET_IDX = 0
@@ -467,28 +459,31 @@ class Bst10(Dashboard):
         self.index_col = 0
         self.dashboard = dashboard
         self._df = pd.DataFrame()
+        self.projects = set()
 
     def load(self, cols_to_keep=Dashboard.BST_RAW_COLS):
-        self.df = pd.read_excel(self.path, sheet_name=self.DEFAULT_SHEET_IDX, index_col=self.index_col, usecols=cols_to_keep)
+        self._df = pd.read_excel(self.path, sheet_name=self.DEFAULT_SHEET_IDX, index_col=self.index_col, usecols=cols_to_keep)
         self._clean()
-        self.df = self._load_helper(self.df)
         return
 
     def _clean(self, drop_proposals=True):
         if drop_proposals:
-            self.df = self.df[self.df[TASK_CODE] != "PP"]
-            self.df.drop([TASK_CODE], inplace=True, axis=1) 
-        self.df.columns = [PROJECT, PM]
-        self.df = self.dashboard._load_helper(self.df)
+            self._df = self._df[self._df[TASK_CODE] != "PP"]
+            self._df.drop([TASK_CODE], inplace=True, axis=1) 
+        self._df.columns = [PROJECT, PM]
+        self._df.index.rename(JOB_NUM, inplace=True)
+        self._df = self._load_helper(self._df)
+        self.projects = set(self._df.index.values)
+        self.project_managers = set(self._df[PM].unique())
         return 
 
-    @property
-    def df(self):
-        return self._df
+    # @property
+    # def df(self):
+    #     return self._df
 
-    @df.setter
-    def df(self, value):
-        self._df = value
+    # @df.setter
+    # def df(self, value):
+    #     self._df = value
 
 def _check_not_nan(value):
     if not value:
