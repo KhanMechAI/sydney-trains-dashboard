@@ -17,6 +17,7 @@ XLSX = '.xlsx'
 TMP_FILE = "~$"
 GHD_LOGO = r'C:\Users\kschroder-turner\Documents\TEMP\tmp\logo\ghd_logo.png'
 ST_LOGO = r'C:\Users\kschroder-turner\Documents\TEMP\tmp\logo\st_logo.png'
+MASTER_FNAME = 'OUTPUT.xlsx'
 
 #Dataframe constants
 TASK_CODE = "Task Code" #BST constant
@@ -47,6 +48,8 @@ COL_ORDER = [
     ACTION_BY,
     COMMENTS,
 ]
+# MANDATORY_COL_IDX = [0, 3, 4, 5, 6, 7, 8, 9, 10,]
+MANDATORY_COL_IDX = [1, 4, 5, 6, 7, 8, 9, 10, 11,]
 BST_COLS = [
     ST_REF_PO,
     ST_DES_MAN,
@@ -66,19 +69,20 @@ BST_RAW_COLS = [
 ]
 HEADERS = [JOB_NUM, *COL_ORDER]
 
-COL_WIDTH = [14,15,14,13,14,9,9,14,14,35,31,16,80]
+
 
 DATE_FORMAT = '%d-%m-%Y'
-DATETIME_TYPE_STRING = 'datetime64[ns]'
+DATETIME_TYPE_STRING = {'datetime64', "datetime"}
 
 # XLSXWRITER constants
+COL_WIDTH = [13, 15, 14, 13, 15, 14, 10, 14, 14, 29, 30, 16, 110,]
 MARGINS = {
     'left':_cm_to_inch(0.6),
     'right':_cm_to_inch(0.6),
     'top':_cm_to_inch(3),
     'bottom':_cm_to_inch(1.9),
 }
-SHEET1_NAME = 'ST Dashboard'\
+SHEET1_NAME = 'ST Dashboard'
 ## Colours
 GHD_BLUE = '#006DA3'
 WHITE = '#FFFFFF'
@@ -88,6 +92,7 @@ ON_TRACK_TEXT_COLOUR = '#375623'
 BEHIND_SCHEDULE_CELL_FILL = '#ffc7ce'
 AT_RISK_CELL_FILL = '#ffeb9c'
 ON_TRACK_CELL_FILL = '#c6efce'
+MANDATORY_INPUT_CELL_FILL = '#ff6d4b'
 ## Formats
 BASE_FORMAT = {
     'bold': False,
@@ -96,13 +101,14 @@ BASE_FORMAT = {
     'align': 'center',
     'border': 1,
     'font_name': 'arial',
-    'font_size': 11,
+    'font_size': 10,
     'locked': 0,
 }
 HEADER_FORMAT = {
     'bg_color': GHD_BLUE,
     'border_color': WHITE,
     'font_color': WHITE,
+    'font_size': 11,
 }
 BEHIND_SCHEDULE_FORMAT = {
     'bg_color': BEHIND_SCHEDULE_CELL_FILL,
@@ -116,17 +122,18 @@ ON_TRACK_FORMAT = {
     'bg_color': ON_TRACK_CELL_FILL,
     'font_color': ON_TRACK_TEXT_COLOUR,
 }
+MANDATORY_INPUT_FORMAT = {
+    'bg_color': MANDATORY_INPUT_CELL_FILL,
+}
 NEW_JOB_FORMAT = {
     'bold': True,
-    'border': 12,
+    # 'border': 12,
 }
-
 NEW_PM_FORMAT = {
     'bold': True,
-    'border': 13,
+    # 'border': 13,
 }
-
-
+## Data valdation
 PHASE_D_VAL = {
     'validate': 'list',
     'source': [
@@ -153,10 +160,16 @@ SCHEDULE_D_VAL = {
     'input_title': 'Select a schedule desciption',
     'input_message': 'Please be realistic when selecting a schedule status. Risks and issues can\'t be mitigated or resolved unless they\'re communicated.',
 }
-LOCKED_FMT = {
-    'locked': 0,
+ACTION_D_VAL = {
+    'validate': 'list',
+    'source': [
+        'GHD',
+        'ST',
+    ],
+    'input_title': 'Select A Stakeholder',
+    'input_message': 'Select either GHD or ST from the drop down',
 }
-
+## Exclusions
 EXCLUSIONS = {
     JOB_NUM: [
         2127653,
@@ -176,14 +189,18 @@ EXCLUSIONS = {
 #TODO: Fix dates copying over as numbers
 
 
+
+
+
 def main():
-    writer = pd.ExcelWriter(Path(DASHBOARD_DIRECTORY) / 'OUTPUT.xlsx', engine='xlsxwriter')
+    # writer = pd.ExcelWriter(, engine='xlsxwriter')
+    master_file_path = Path(DASHBOARD_DIRECTORY) / MASTER_FNAME
     [columns, master_df] = _get_master(MONTH)
     bst_df = _get_bst(0, sheet=0)
     master_df, new_data = _update_bst(master_df, bst_df)
     master_df = _copy_to_master(master_df, columns, MONTH)
     master_df =_exclude(master_df, EXCLUSIONS)
-    _export_master_sheet(master_df, writer, new_data)
+    _export_sheet(master_file_path, master_df, sheet_name=SHEET1_NAME, new_data=new_data, is_pm=False)
     _export_pm_sheets(master_df)
     return
 
@@ -222,6 +239,7 @@ def _update_bst(master, bst):
     }
     return master.append(bst.loc[idx_diff]), new_data
 
+
 def _export_pm_sheets(df):
     _all_pms = df[PM].unique()
     _all_pms.sort()
@@ -231,14 +249,20 @@ def _export_pm_sheets(df):
     for name in _all_pms: 
         _name = _output_dir / Path(str(name)+XLSX) #Generate file path and name for PM
         _df = df[df[PM]==name] #Extract PM data from main dataframe
-        _wr, _wb, _ws = _excel_setup(_name, SHEET1_NAME)#Specify the header format
-        _ws.protect() #Lock all the cells
-        _header_format(_wb, _ws) #Format the header cells
-        _cell_range = _editable_cell_range(_df) #Get the range of editable cells
-        _data_validation(_ws, _df, PHASE, PHASE_D_VAL)#Set up data validation
-        _data_validation(_ws, _df, SCH, SCHEDULE_D_VAL) 
-        _format_cells(_wb, _ws, _cell_range, df=_df) #Unlock the desired range of editable cells and paste in data
-        _wr.save()#Save the workbook
+        _export_sheet(_name, _df, sheet_name=SHEET1_NAME)
+    return
+
+def _export_sheet(file_path, df, sheet_name, new_data={}, is_pm=True):
+    _wr, _wb, _ws = _excel_setup(file_path, sheet_name)#Specify the header format
+    _ws.protect() #Lock all the cells
+    _header_format(_wb, _ws) #Format the header cells
+    _cell_range = _editable_cell_range(df) #Get the range of editable cells
+    _data_validation(_ws, df, PHASE, PHASE_D_VAL)#Set up data validation
+    _data_validation(_ws, df, SCH, SCHEDULE_D_VAL) 
+    _data_validation(_ws, df, ACTION_BY, ACTION_D_VAL)
+    _format_cells(_wb, _ws, _cell_range, df=df, is_pm=is_pm, new_data=new_data) #Unlock the desired range of editable cells and paste in data
+    _sheet_setup(_ws, df)
+    _wr.save()#Save the workbook
     return
 
 def _excel_setup(file_path, sheet_name):
@@ -247,10 +271,12 @@ def _excel_setup(file_path, sheet_name):
     worksheet = workbook.add_worksheet(sheet_name)#Add a named worksheet to the workbook
     return writer, workbook, worksheet
 
-def _sheet_setup(worksheet):
+def _sheet_setup(worksheet, df):
     worksheet.set_paper(8)
     worksheet.set_page_view()
     worksheet.set_landscape()
+    worksheet.set_zoom(60)
+    worksheet.hide_gridlines(1)
     worksheet.set_header(
         f'&L&[Picture]&C&14&"Arial,Bold"GHD Monthly Dashboard\nIssue {ISSUE}: ({MONTH})&R&[Picture]', 
         {
@@ -266,6 +292,8 @@ def _sheet_setup(worksheet):
         bottom=MARGINS['bottom'],
     )
     worksheet.repeat_rows(0)
+    _row_start, _row_finish, _col_start, _col_finish =_editable_cell_range(df, printable=True)
+    worksheet.print_area(_row_start, _row_finish, _col_start, _col_finish)
     return
 
 def _get_col_idx(df, col):
@@ -278,42 +306,55 @@ def _data_val_range(df, col):
 def _data_validation(sheet, df, col, val_fmt):
     return sheet.data_validation(*_data_val_range(df, col), val_fmt)
 
-def _editable_cell_range(df):
-    return [1, df.shape[0]+1, 0, df.shape[1]+1]
+def _editable_cell_range(df, printable=False):
+    offset = 1
+    if printable:
+        offset = 0
+    return [1, df.shape[0] + offset, 0, df.shape[1] + offset]
 
-def _format_cells(workbook, sheet, cell_range, df=pd.DataFrame(), value=None, new_jobs=[], new_pms=[]):
+def _format_cells(workbook, sheet, cell_range, is_pm=True, df=pd.DataFrame(), new_data={}):
     _row_start, _row_finish, _col_start, _col_finish = cell_range
     
-    def _get_format():
+    new_pms = new_data.get('pm',[])
+    new_jobs = new_data.get('jobs',[]) 
+
+    def _get_format(schedule=None, contains_data=True):
+        
         cell_format = BASE_FORMAT
+        
         if df.index.values[row-1] in new_jobs:
             cell_format = {**cell_format, **NEW_JOB_FORMAT}
+        
         if df.iloc[row-1, 2] in new_pms:
             cell_format = {**cell_format, **NEW_PM_FORMAT}
-        schedule = _check_not_nan(df.iloc[row-1, 5])
+
         if schedule:
             if schedule.lower() ==  SCHEDULE_D_VAL['source'][0].lower():
                 cell_format = {**cell_format, **ON_TRACK_FORMAT}
+            
             elif schedule.lower() ==  SCHEDULE_D_VAL['source'][1].lower():
                 cell_format = {**cell_format, **AT_RISK_FORMAT}
+            
             elif schedule.lower() ==  SCHEDULE_D_VAL['source'][2].lower():
                 cell_format = {**cell_format, **BEHIND_SCHEDULE_FORMAT}
+        
+        if not contains_data:
+            cell_format = {**cell_format, **MANDATORY_INPUT_FORMAT}
+        
         return workbook.add_format(cell_format)
-
-    if not value:
-        for row in range(_row_start, _row_finish):
-            cell_format = _get_format()
-            for col in range(_col_start, _col_finish):
-                sheet.write(row, col, value, cell_format)
 
     if not df.empty:
         for row in range(_row_start, _row_finish):
-            cell_format = _get_format()
+            schedule = _check_not_nan(df.iloc[row-1, 5])
+            base_cell_format = _get_format(schedule=schedule)
             for col in range(_col_start, _col_finish):
+                cell_format = base_cell_format
                 if col == 0:
                     value = df.index.values[row-1]
                 else:
                     value = _check_not_nan(df.iloc[row-1, col-1])
+                    if is_pm and (col in MANDATORY_COL_IDX) and not value:
+                        cell_format = _get_format(contains_data=value)
                 sheet.write(row, col, value, cell_format)          
     
 def _check_not_nan(value):
@@ -332,25 +373,6 @@ def _header_format(workbook, sheet):
     for col_num, value in enumerate(HEADERS):
         sheet.write(0, col_num, value, header_format)
         sheet.set_column(col_num, col_num, COL_WIDTH[col_num])
-
-def _export_master_sheet(df, writer,new_data):
-    """This function outputs the final dashboard sheet. It writes all the PM sheets for the following month too.
-    
-    Arguments:
-        df {Dataframe} -- Pandas dataframe of the dashboard
-        writer {xlsxwriter} -- The handle to the xlsxwriter for the excel sheet
-    """
-    df.to_excel(writer, sheet_name=SHEET1_NAME, startrow=1, header=False)
-    _wb = writer.book
-    _ws = writer.sheets[SHEET1_NAME]
-    _sheet_setup(_ws)
-    _header_format(_wb, _ws)
-    _cell_range = _editable_cell_range(df) #Get the range of editable cells
-    _data_validation(_ws, df, PHASE, PHASE_D_VAL)#Set up data validation
-    _data_validation(_ws, df, SCH, SCHEDULE_D_VAL) 
-    _format_cells(_wb, _ws, _cell_range, df=df, new_jobs=new_data['jobs'], new_pms=new_data['pm'])
-    writer.save()
-    return
 
 def _get_master(month):
     """ This function opens the master spreadsheet to extract the header columns.
@@ -372,6 +394,7 @@ def _get_master(month):
     df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
     df.sort_index(inplace=True)
     df.sort_index(axis=1, inplace=True)
+    df = _date_time_handler(df)
     df = _add_missing_col(df)
     columns = df.columns
     return [columns, df]
@@ -383,13 +406,16 @@ def _add_missing_col(df):
     return df
 
 def _date_time_handler(df):
-    if not df[C_C_DATE].isnull().values.all():
-        if df[C_C_DATE].dtype == DATETIME_TYPE_STRING:
-            df[C_C_DATE] = df[C_C_DATE].dt.strftime(DATE_FORMAT)
-        if df[F_C_DATE].dtype == DATETIME_TYPE_STRING:
-            df[F_C_DATE] = df[F_C_DATE].dt.strftime(DATE_FORMAT)
-    df.replace(r'NaT', '',regex=True, inplace=True)
+    df[F_C_DATE].apply(lambda x: _date_time_converter(x))
+    df[C_C_DATE].apply(lambda x: _date_time_converter(x))
+    df.replace(r'(NaT|NaN|nan|nat)', '',regex=True, inplace=True)
     return df
+
+def _date_time_converter(elem):
+    if type(elem).__name__ in DATETIME_TYPE_STRING:
+        return elem.strftime(DATE_FORMAT)
+    else:
+        return elem
 
 def _copy_to_master(master, columns, month):
     _dash_dir = Path(DASHBOARD_DIRECTORY)
