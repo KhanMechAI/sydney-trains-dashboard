@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import xlsxwriter
 import datetime
+import string
 
 #TODO make it be able to read from a URL.
 
@@ -169,10 +170,13 @@ ACTION_D_VAL = {
 EXCLUSIONS = {
     JOB_NUM: [
         2127653,
+        2125276,
+        210921566,
     ],
     PM: [
         'Winston Wang',
         'Ruevern Barritt',
+        'Michael Hastings',
     ]
 }
 
@@ -192,14 +196,18 @@ SCH = 'Schedule'
 COMMENTS = 'Comments'
 ACTION_BY = 'Action By'
 
-DEFAULT_SHEET = "Sheet1"
+DEFAULT_SHEET = "Dashboard"
 DEFAULT_NAME = "Dashboard"
+
+BST_MAPPING = {
+    "Project Manager Name": PM,
+    "Project Name": PROJECT,
+}
 
 class Dashboard():
     num_cols = 10
     PM_SUB_DIR = "Project Manager Sheets"
     BST_RAW_COLS = [
-        "Project Code",
         "Project Manager Name",
         "Project Name",
         TASK_CODE,
@@ -230,13 +238,23 @@ class Dashboard():
     
     def _load_conflict_handler(self, bst=True, other_df=None):
         if bst:
-            proj_to_drop = self.projects.difference(self.bst.projects)
-            proj_to_append = self.bst.projects.difference(self.projects)
-            self._df.drop(labels=proj_to_drop)
-            self._df = self._df.append(self.bst._df.loc[proj_to_append])
-            self.new_data['job'] = proj_to_append
-            self.new_data['pm'] = set(self._df.loc[proj_to_append, PM].unique())
+            #Keep jobs that are in both BST and the Prev Dashboard. = intersection of master with bst.
+            #Add new jobs from BST to dashboard. = set difference of bst to master then append to master
+            #Remove old jobs from dashboard. = negate the master bst intersection
+            intersect_mask = np.in1d(self._df.index.values, self.bst._df.index.values, assume_unique=True)
+            append_mask = np.in1d(self.bst._df.index.values, self._df.index.values, assume_unique=True, invert=True)
+            #Remove old jobs
+            self._df = self._df[intersect_mask]
+            current_pms = self._df[PM].unique()
+            #Append new jobs
+            self._df = self._df.append(self.bst._df[append_mask])
+            #Keep track of the new projects and project managers
+            new_pms = np.in1d(self.bst._df[PM], current_pms, invert=True)
+            self.new_data['job'] = set(self.bst._df.index.values[append_mask])
+            self.new_data['pm'] = set(self.bst._df.loc[new_pms, PM])
         else:
+            #TODO: This code is outdate, fix to match above
+            
             if not other_df:
                 raise ValueError("If bst=False, other_df must be specified")
             other_df_projects = set(other_df.index.values)
@@ -277,7 +295,8 @@ class Dashboard():
         dups = self._index_dup_check(df, path)
         if dups:
             df = self._load_helper(df)
-            self._df.update(df,overwrite=True, errors='ignore')
+            mask = np.isin(df.index.values, self._df.index.values)
+            self._df.update(df[mask],overwrite=True, errors='ignore')
 
     def _index_dup_check(self, df, path):
         len_idx_init = len(df.index)
@@ -411,11 +430,10 @@ class Dashboard():
         _wr.save()#Save the workbook
         
     def _get_output_name(self, path, pm=True):
-        trailingExtension = self.workbook_name + XLSX
         if pm:
-            path = path / (pm + ' ' + trailingExtension)
+            path = path / (pm + XLSX)
         else:
-            path = path / trailingExtension
+            path = path / (self.workbook_name + XLSX)
         return path
 
     def _data_val_range(self, col):
@@ -429,8 +447,6 @@ class Dashboard():
     def printable_cells(self): 
         modifier = [0, -1, 0, -1,]
         return [sum(x) for x in zip(self.protected_cells(self._df), modifier)]
-
-    
 
     def _index_handler(self, df):
         df = df[~df.index.duplicated(keep='first')]
@@ -448,7 +464,11 @@ class Dashboard():
             if col not in df.columns:
                 df[col] = ""
         return df
-
+    def show_new(self):
+        print(f'\nNew project managers:\n')
+        print(f'{self.new_data["pm"]}')
+        print(f'\nNew projects:\n')
+        print(f'{self.new_data["job"]}')
 
 
 class Bst10(Dashboard):
@@ -462,28 +482,27 @@ class Bst10(Dashboard):
         self.projects = set()
 
     def load(self, cols_to_keep=Dashboard.BST_RAW_COLS):
-        self._df = pd.read_excel(self.path, sheet_name=self.DEFAULT_SHEET_IDX, index_col=self.index_col, usecols=cols_to_keep)
+        self._df = pd.read_excel(self.path, sheet_name=self.DEFAULT_SHEET_IDX, index_col=self.index_col)
         self._clean()
         return
 
     def _clean(self, drop_proposals=True):
+        import unicodedata
+        cols = self._df.columns.to_list()
+        cols = [unicodedata.normalize('NFKD', x).encode('ascii','ignore') for x in cols]
+        self._df.columns = [x.decode("UTF-8") for x in cols]
+        self._df = self._df[Dashboard.BST_RAW_COLS]
+        self._df.rename(columns=BST_MAPPING, inplace=True)
         if drop_proposals:
-            self._df = self._df[self._df[TASK_CODE] != "PP"]
+            mask = self._df[TASK_CODE] != "PP" 
+            self._df = self._df[mask]
             self._df.drop([TASK_CODE], inplace=True, axis=1) 
-        self._df.columns = [PROJECT, PM]
+        self._df = self._df[[PROJECT, PM]]
         self._df.index.rename(JOB_NUM, inplace=True)
         self._df = self._load_helper(self._df)
         self.projects = set(self._df.index.values)
         self.project_managers = set(self._df[PM].unique())
         return 
-
-    # @property
-    # def df(self):
-    #     return self._df
-
-    # @df.setter
-    # def df(self, value):
-    #     self._df = value
 
 def _check_not_nan(value):
     if not value:
@@ -496,6 +515,25 @@ def _check_not_nan(value):
         return value
 
 if __name__ == "__main__":
+
+
+
+    #TODO: Test code here
+    # bst_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\tmp\bst\sydney_water_bst.xlsx")
+
+    # output_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\tmp\bst")
+
+    # new_dash = Dashboard(client="Sydney Water", workbook_name="Sydney Water Dashboard")
+
+    # new_dash.load_bst(bst_path)
+
+    # new_dash.export(output_path)
+
+
+
+
+
+    #TODO: Sydney trains here
 
     prev_dash_path = Path(DASHBOARD_DIRECTORY) / "July 2019" / "July 19 Dashboard.xlsx"
 
@@ -510,6 +548,8 @@ if __name__ == "__main__":
     new_dash.load_prev_dashboard(prev_dash_path)
 
     new_dash.load_bst(bst_path)
+
+    new_dash.show_new()
 
     new_dash.load_pm(pm_sheets_path)
 
