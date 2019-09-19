@@ -5,6 +5,7 @@ import numpy as np
 import xlsxwriter
 import datetime
 import string
+import warnings
 
 #TODO make it be able to read from a URL.
 
@@ -172,6 +173,7 @@ EXCLUSIONS = {
         2127653,
         2125276,
         210921566,
+        2127943,
     ],
     PM: [
         'Winston Wang',
@@ -254,7 +256,7 @@ class Dashboard():
             self.new_data['pm'] = set(self.bst._df.loc[new_pms, PM])
         else:
             #TODO: This code is outdate, fix to match above
-            
+
             if not other_df:
                 raise ValueError("If bst=False, other_df must be specified")
             other_df_projects = set(other_df.index.values)
@@ -295,14 +297,24 @@ class Dashboard():
         dups = self._index_dup_check(df, path)
         if dups:
             df = self._load_helper(df)
-            mask = np.isin(df.index.values, self._df.index.values)
-            self._df.update(df[mask],overwrite=True, errors='ignore')
+            df = self._check_pm_error(df)
+            overwrite_mask = df.index.values
+            self._df.loc[overwrite_mask] = df.loc[overwrite_mask]
+
+    def _check_pm_error(self, df):
+        #TODO: Print Error to logging file. So make a logging file as well....
+        mask = np.isin(df.index.values, self._df.index.values)
+        if len(df[~mask].index) > 0:
+            msg0 = f'Project manager {df[PM].unique().astype(str)} might have errors. Please check the PM Sheet.'
+            msg1 = f'Project(s) found not in master: {df[~mask].index.values.astype(str)}'
+            warnings.warn(msg0, Warning) 
+            warnings.warn(msg1, Warning) 
+        return df[mask]
 
     def _index_dup_check(self, df, path):
         len_idx_init = len(df.index)
         len_idx_fin = len(set(df.index))
         if len_idx_init != len_idx_fin:
-            import warnings
             msg1 = f'Duplicate index values. Unique indices: {len_idx_init}, Total indicies: {len_idx_fin}. Skipping {path.name}'
             warnings.warn(msg1, Warning) 
             return False
@@ -539,7 +551,7 @@ if __name__ == "__main__":
 
     pm_sheets_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\Monthly Dashboards\August 2019\Job Managers")
 
-    bst_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\tmp\BST10 Output.xlsx")
+    bst_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\tmp") / "august" / "Project Detail.xlsx"
 
     output_path = Path(DASHBOARD_DIRECTORY) / MONTH
 
