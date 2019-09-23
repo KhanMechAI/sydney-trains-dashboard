@@ -6,6 +6,7 @@ import xlsxwriter
 import datetime
 import string
 import warnings
+import re
 
 #TODO make it be able to read from a URL.
 
@@ -14,8 +15,8 @@ def _cm_to_inch(length):
     return np.divide(length,2.54)
 
 #Directory constants
-ISSUE = 3
-MONTH = 'August 2019'
+ISSUE = 4
+MONTH = 'September 2019'
 SUB_DIR = 'Job Managers'
 DASH = 'Dashboard'
 DASHBOARD_DIRECTORY = r"C:\Users\kschroder-turner\Documents\TEMP\Monthly Dashboards"
@@ -36,12 +37,14 @@ NEXT_ACTION = 'Next Actions'
 PHASE = 'Phase'
 PROJECT = "Project Name"
 ST_DES_MAN = 'ST Design Manager'
-ST_REF_PO = 'ST Reference No. / Purchase Order Number'
+ST_REF_PO = 'ST Purchase Order Number'
+ST_P_NUM = "ST Project Number"
 SCH = 'Schedule'
 COMMENTS = 'Comments'
 ACTION_BY = 'Action By'
 COL_ORDER = [
     ST_REF_PO,
+    ST_P_NUM,
     PROJECT,
     PM,
     ST_DES_MAN,
@@ -55,12 +58,13 @@ COL_ORDER = [
     COMMENTS,
 ]
 # MANDATORY_COL_IDX = [0, 3, 4, 5, 6, 7, 8, 9, 10,]
-MANDATORY_COL_IDX = [1, 4, 5, 6, 7, 8, 9, 10, 11,]
+MANDATORY_COL_IDX = [1, 4, 5, 6, 7, 8, 9, 10, 11, 12,]
 BST_COLS = [
     PROJECT,
     PM,
 ]
 
+ST_PN_REGEX = re.compile("(?:P\.(?P<st_pn>\d+))")
 
 HEADERS = [JOB_NUM, *COL_ORDER]
 
@@ -70,7 +74,9 @@ DATE_FORMAT = '%d-%m-%Y'
 DATETIME_TYPE_STRING = {'datetime64', "datetime"}
 
 # XLSXWRITER constants
-COL_WIDTH = [13, 15, 14, 13, 15, 14, 10, 14, 14, 29, 29, 16, 110,]
+13,	12,	12,	24,	17,	15,	14,	10,	14,	14,	19,	24,	6,
+
+COL_WIDTH = [13, 12, 12, 24, 17, 15, 14, 10, 14, 14, 19, 24, 6, 110,]
 MARGINS = {
     'left':_cm_to_inch(0.6),
     'right':_cm_to_inch(0.6),
@@ -128,6 +134,10 @@ NEW_PM_FORMAT = {
     'bold': True,
     # 'border': 13,
 }
+ST_PNUM_ERROR_FORMAT = {
+    'italic': True,
+    'bold': True,
+}
 DATE_FORMAT = {
     'num_format': 'DD-MM-YYYY'
 }
@@ -174,29 +184,33 @@ EXCLUSIONS = {
         2125276,
         210921566,
         2127943,
+        210921575,
+        12515936,
+        210921633,
     ],
     PM: [
         'Winston Wang',
         'Ruevern Barritt',
         'Michael Hastings',
+        'Elena Bullo',
     ]
 }
 
-#Dataframe constants
-TASK_CODE = "Task Code" #BST constant
-JOB_NUM = 'GHD Job Number'
-C_C_DATE = "Contractual Completion Date"
-CUR_STAT = 'Current Status'
-F_C_DATE = "Forecast Completion Date"
-PM = "GHD Project Manager"
-NEXT_ACTION = 'Next Actions'
-PHASE = 'Phase'
-PROJECT = "Project Name"
-ST_DES_MAN = 'ST Design Manager'
-ST_REF_PO = 'ST Reference No. / Purchase Order Number'
-SCH = 'Schedule'
-COMMENTS = 'Comments'
-ACTION_BY = 'Action By'
+# #Dataframe constants
+# TASK_CODE = "Task Code" #BST constant
+# JOB_NUM = 'GHD Job Number'
+# C_C_DATE = "Contractual Completion Date"
+# CUR_STAT = 'Current Status'
+# F_C_DATE = "Forecast Completion Date"
+# PM = "GHD Project Manager"
+# NEXT_ACTION = 'Next Actions'
+# PHASE = 'Phase'
+# PROJECT = "Project Name"
+# ST_DES_MAN = 'ST Design Manager'
+# ST_REF_PO = 'ST Reference No. / Purchase Order Number'
+# SCH = 'Schedule'
+# COMMENTS = 'Comments'
+# ACTION_BY = 'Action By'
 
 DEFAULT_SHEET = "Dashboard"
 DEFAULT_NAME = "Dashboard"
@@ -255,7 +269,7 @@ class Dashboard():
             self.new_data['job'] = set(self.bst._df.index.values[append_mask])
             self.new_data['pm'] = set(self.bst._df.loc[new_pms, PM])
         else:
-            #TODO: This code is outdate, fix to match above
+            #TODO: This code is outdated, fix to match above
 
             if not other_df:
                 raise ValueError("If bst=False, other_df must be specified")
@@ -274,6 +288,8 @@ class Dashboard():
             self.project_managers = set(self._df[PM].unique())
         else:
             self._load_conflict_handler(bst=False, other_df=df)
+
+        self._df[[SCH, CUR_STAT, NEXT_ACTION, ACTION_BY]] = ''
     
     def _load_helper(self, df):
         df = self._index_handler(df)
@@ -389,8 +405,11 @@ class Dashboard():
                 if df.index.values[row-1] in self.new_data['job']:
                     cell_format = {**cell_format, **NEW_JOB_FORMAT}
                 
-                if df.iloc[row-1, 2] in self.new_data['pm']:
+                if df.iloc[row-1, df.columns.get_loc(PM)] in self.new_data['pm']:
                     cell_format = {**cell_format, **NEW_PM_FORMAT}
+
+                if _st_pn_regex_check(df.iloc[row-1, df.columns.get_loc(ST_REF_PO)], df.iloc[row-1, df.columns.get_loc(ST_P_NUM)]):
+                    cell_format = {**cell_format, **ST_PNUM_ERROR_FORMAT}
 
                 if schedule:
                     if schedule.lower() ==  SCHEDULE_D_VAL['source'][0].lower():
@@ -412,7 +431,7 @@ class Dashboard():
 
             if not df.empty:
                 for row in range(_row_start, _row_finish):
-                    schedule = _check_not_nan(df.iloc[row-1, 5])
+                    schedule = _check_not_nan(df.iloc[row-1, df.columns.get_loc(SCH)])
                     base_cell_format = _get_format(schedule=schedule)
                     for col in range(_col_start, _col_finish):
                         cell_format = base_cell_format
@@ -428,16 +447,22 @@ class Dashboard():
                         sheet.write(row, col, value, write_format)
 
         _wr, _wb, _ws = _setup_excel()#Specify the header format
+
         if pm:
             _ws.protect() #Lock all the cells
+
         _header_format(_wb, _ws) #Format the header cells
         _data_validation(_ws, PHASE, PHASE_D_VAL)#Set up data validation
         _data_validation(_ws, SCH, SCHEDULE_D_VAL) 
         _data_validation(_ws, ACTION_BY, ACTION_D_VAL)
+
+        self._df.sort_values(by=PM, axis=0, inplace=True)
+
         if pm:
             _format_cells(_wb, _ws, df=self._df[self._df[PM]==pm]) #Unlock the desired range of editable cells and paste in data
         else:
             _format_cells(_wb, _ws, df=self._df)
+
         _sheet_setup(_ws)
         _wr.save()#Save the workbook
         
@@ -526,6 +551,25 @@ def _check_not_nan(value):
     else:
         return value
 
+def _st_pn_regex_check(purchase_order_col, project_number_col):
+    match1 = ST_PN_REGEX.match(str(purchase_order_col))
+    if match1:
+        match2 = ST_PN_REGEX.match(str(project_number_col))
+        if match2:
+            po_nums = [match1.groupdict()["st_pn"]]
+            p_nums = [match2.groupdict()["st_pn"]]
+            if len(p_nums) == len(po_nums):
+                if po_nums == p_nums:
+                    return False
+                else:
+                    return True
+            else:
+                return True
+        else:
+            return False
+    else:
+        return False
+
 if __name__ == "__main__":
 
 
@@ -547,11 +591,11 @@ if __name__ == "__main__":
 
     #TODO: Sydney trains here
 
-    prev_dash_path = Path(DASHBOARD_DIRECTORY) / "July 2019" / "July 19 Dashboard.xlsx"
+    prev_dash_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\Monthly Dashboards\September 2019\Previous Dashboard") / "Dashboard.xlsx"
 
-    pm_sheets_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\Monthly Dashboards\August 2019\Job Managers")
+    # pm_sheets_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\Monthly Dashboards\August 2019\Job Managers")
 
-    bst_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\tmp") / "august" / "Project Detail.xlsx"
+    bst_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\Monthly Dashboards") / "September 2019" / "BST" / "Project Detail.xlsx"
 
     output_path = Path(DASHBOARD_DIRECTORY) / MONTH
 
@@ -563,6 +607,6 @@ if __name__ == "__main__":
 
     new_dash.show_new()
 
-    new_dash.load_pm(pm_sheets_path)
+    # new_dash.load_pm(pm_sheets_path)
 
     new_dash.export(output_path)
