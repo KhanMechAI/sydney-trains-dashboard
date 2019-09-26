@@ -106,6 +106,7 @@ BASE_FORMAT = {
     'locked': 0,
 }
 HEADER_FORMAT = {
+    'bold': True,
     'bg_color': GHD_BLUE,
     'border_color': WHITE,
     'font_color': WHITE,
@@ -187,6 +188,9 @@ EXCLUSIONS = {
         210921575,
         12515936,
         210921633,
+        210921586,
+        210921339,
+        2128388,
     ],
     PM: [
         'Winston Wang',
@@ -195,22 +199,6 @@ EXCLUSIONS = {
         'Elena Bullo',
     ]
 }
-
-# #Dataframe constants
-# TASK_CODE = "Task Code" #BST constant
-# JOB_NUM = 'GHD Job Number'
-# C_C_DATE = "Contractual Completion Date"
-# CUR_STAT = 'Current Status'
-# F_C_DATE = "Forecast Completion Date"
-# PM = "GHD Project Manager"
-# NEXT_ACTION = 'Next Actions'
-# PHASE = 'Phase'
-# PROJECT = "Project Name"
-# ST_DES_MAN = 'ST Design Manager'
-# ST_REF_PO = 'ST Reference No. / Purchase Order Number'
-# SCH = 'Schedule'
-# COMMENTS = 'Comments'
-# ACTION_BY = 'Action By'
 
 DEFAULT_SHEET = "Dashboard"
 DEFAULT_NAME = "Dashboard"
@@ -247,11 +235,11 @@ class Dashboard():
         self.bst.load()
         if self._df.empty:
             self._df = self.bst._df
+            self.projects = self.bst.projects
+            self.project_managers = self.bst.project_managers
         else:
             self._load_conflict_handler()
-        self.projects = self.bst.projects
-        self.project_managers = self.bst.project_managers
-    
+        
     def _load_conflict_handler(self, bst=True, other_df=None):
         if bst:
             #Keep jobs that are in both BST and the Prev Dashboard. = intersection of master with bst.
@@ -284,10 +272,11 @@ class Dashboard():
         df = self._load_helper(df)
         if self._df.empty:
             self._df = df
-            self.projects = set(self._df.index.values)
-            self.project_managers = set(self._df[PM].unique())
         else:
             self._load_conflict_handler(bst=False, other_df=df)
+        
+        self.projects = set(self._df.index.values)
+        self.project_managers = set(self._df[PM].unique())
 
         self._df[[SCH, CUR_STAT, NEXT_ACTION, ACTION_BY]] = ''
     
@@ -350,7 +339,7 @@ class Dashboard():
             if pm:
                 pm_path = path / self.PM_SUB_DIR
                 pm_path.mkdir(parents=True, exist_ok=True)
-                for pm in self.project_managers:
+                for pm in self._df[PM].unique():
                     self._export_to_excel(pm_path, pm)
             self._export_to_excel(path, pm=False)
 
@@ -532,8 +521,9 @@ class Bst10(Dashboard):
         self._df.rename(columns=BST_MAPPING, inplace=True)
         if drop_proposals:
             mask = self._df[TASK_CODE] != "PP" 
-            self._df = self._df[mask]
-            self._df.drop([TASK_CODE], inplace=True, axis=1) 
+            self._df = self._df[mask]#Removes BST10 props
+            self._df.drop([TASK_CODE], inplace=True, axis=1) #Remove the task code column
+            self._df = self._df[(self._df.index < 210900000) | (self._df.index > 210999999)] #Removes old MIS Props
         self._df = self._df[[PROJECT, PM]]
         self._df.index.rename(JOB_NUM, inplace=True)
         self._df = self._load_helper(self._df)
@@ -593,7 +583,7 @@ if __name__ == "__main__":
 
     prev_dash_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\Monthly Dashboards\September 2019\Previous Dashboard") / "Dashboard.xlsx"
 
-    # pm_sheets_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\Monthly Dashboards\August 2019\Job Managers")
+    pm_sheets_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\Monthly Dashboards\September 2019\Job Managers")
 
     bst_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\Monthly Dashboards") / "September 2019" / "BST" / "Project Detail.xlsx"
 
@@ -607,6 +597,6 @@ if __name__ == "__main__":
 
     new_dash.show_new()
 
-    # new_dash.load_pm(pm_sheets_path)
+    new_dash.load_pm(pm_sheets_path, all_in_path=True)
 
     new_dash.export(output_path)
