@@ -560,43 +560,43 @@ def _st_pn_regex_check(purchase_order_col, project_number_col):
     else:
         return False
 
-if __name__ == "__main__":
+# if __name__ == "__main__":
 
 
 
-    #TODO: Test code here
-    # bst_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\tmp\bst\sydney_water_bst.xlsx")
+#     #TODO: Test code here
+#     # bst_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\tmp\bst\sydney_water_bst.xlsx")
 
-    # output_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\tmp\bst")
+#     # output_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\tmp\bst")
 
-    # new_dash = Dashboard(client="Sydney Water", workbook_name="Sydney Water Dashboard")
+#     # new_dash = Dashboard(client="Sydney Water", workbook_name="Sydney Water Dashboard")
 
-    # new_dash.load_bst(bst_path)
+#     # new_dash.load_bst(bst_path)
 
-    # new_dash.export(output_path)
-
-
+#     # new_dash.export(output_path)
 
 
 
-    #TODO: Sydney trains here
 
-    prev_dash_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\Monthly Dashboards\September 2019\Previous Dashboard") / "Dashboard.xlsx"
 
-    pm_sheets_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\Monthly Dashboards\September 2019\Job Managers")
+#     #TODO: Sydney trains here
 
-    bst_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\Monthly Dashboards") / "September 2019" / "BST" / "Project Detail.xlsx"
+#     prev_dash_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\Monthly Dashboards\September 2019\Previous Dashboard") / "Dashboard.xlsx"
 
-    output_path = Path(DASHBOARD_DIRECTORY) / MONTH
+#     pm_sheets_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\Monthly Dashboards\September 2019\Job Managers")
 
-    new_dash = Dashboard(client="Sydney Trains",)
+#     bst_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\Monthly Dashboards") / "September 2019" / "BST" / "Project Detail.xlsx"
 
-    new_dash.load_prev_dashboard(prev_dash_path)
+#     output_path = Path(DASHBOARD_DIRECTORY) / MONTH
 
-    new_dash.load_bst(bst_path)
+#     new_dash = Dashboard(client="Sydney Trains",)
 
-    new_dash.show_new()
+#     new_dash.load_prev_dashboard(prev_dash_path)
 
-    new_dash.load_pm(pm_sheets_path, all_in_path=True)
+#     new_dash.load_bst(bst_path)
 
-    new_dash.export(output_path)
+#     new_dash.show_new()
+
+#     new_dash.load_pm(pm_sheets_path, all_in_path=True)
+
+#     new_dash.export(output_path)
