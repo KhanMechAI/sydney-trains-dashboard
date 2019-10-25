@@ -16,7 +16,7 @@ def _cm_to_inch(length):
 
 #Directory constants
 ISSUE = 4
-MONTH = 'September 2019'
+MONTH = 'October 2019'
 SUB_DIR = 'Job Managers'
 DASH = 'Dashboard'
 DASHBOARD_DIRECTORY = r"C:\Users\kschroder-turner\Documents\TEMP\Monthly Dashboards"
@@ -140,7 +140,7 @@ ST_PNUM_ERROR_FORMAT = {
     'bold': True,
 }
 DATE_FORMAT = {
-    'num_format': 'DD-MM-YYYY'
+    # 'num_format': 'DD-MM-YYYY'
 }
 ## Data valdation
 PHASE_D_VAL = {
@@ -191,6 +191,22 @@ EXCLUSIONS = {
         210921586,
         210921339,
         2128388,
+        2127791,
+        2126491,
+        2128181,
+        2128198,
+        2127638,
+        12517416,
+        2127322,
+        2126614,
+        2127996,
+        2126623,
+        2127998,
+        2128168,
+        2220070,
+        2127971,
+        2127994,
+        2128118,
     ],
     PM: [
         'Winston Wang',
@@ -560,7 +576,7 @@ def _st_pn_regex_check(purchase_order_col, project_number_col):
     else:
         return False
 
-# if __name__ == "__main__":
+if __name__ == "__main__":
 
 
 
@@ -581,22 +597,22 @@ def _st_pn_regex_check(purchase_order_col, project_number_col):
 
 #     #TODO: Sydney trains here
 
-#     prev_dash_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\Monthly Dashboards\September 2019\Previous Dashboard") / "Dashboard.xlsx"
+    prev_dash_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\Monthly Dashboards\September 2019") / "Dashboard.xlsx"
 
-#     pm_sheets_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\Monthly Dashboards\September 2019\Job Managers")
+    pm_sheets_path = Path(r"\\teams.ghd.com@SSL\DavWWWRoot\operations\SOCSydneyTrainsPanel\Documents\Monthly Dashboards\October 2019")
 
-#     bst_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\Monthly Dashboards") / "September 2019" / "BST" / "Project Detail.xlsx"
+    bst_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\Monthly Dashboards") / "October 2019" / "BST" / "Project Detail.xlsx"
 
-#     output_path = Path(DASHBOARD_DIRECTORY) / MONTH
+    output_path = Path(DASHBOARD_DIRECTORY) / MONTH
 
-#     new_dash = Dashboard(client="Sydney Trains",)
+    new_dash = Dashboard(client="Sydney Trains",)
 
-#     new_dash.load_prev_dashboard(prev_dash_path)
+    new_dash.load_prev_dashboard(prev_dash_path)
 
-#     new_dash.load_bst(bst_path)
+    new_dash.load_bst(bst_path)
 
 #     new_dash.show_new()
 
-#     new_dash.load_pm(pm_sheets_path, all_in_path=True)
+    new_dash.load_pm(pm_sheets_path, all_in_path=True)
 
-#     new_dash.export(output_path)
+    new_dash.export(output_path)
