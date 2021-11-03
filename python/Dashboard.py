@@ -7,6 +7,8 @@ import datetime
 import string
 import warnings
 import re
+from datetime import datetime
+import math
 
 #TODO make it be able to read from a URL.
 
@@ -16,7 +18,7 @@ def _cm_to_inch(length):
 
 #Directory constants
 ISSUE = 4
-MONTH = 'October 2019'
+# MONTH = 'October 2019'
 SUB_DIR = 'Job Managers'
 DASH = 'Dashboard'
 DASHBOARD_DIRECTORY = r"C:\Users\kschroder-turner\Documents\TEMP\Monthly Dashboards"
@@ -76,7 +78,7 @@ DATETIME_TYPE_STRING = {'datetime64', "datetime"}
 # XLSXWRITER constants
 13,	12,	12,	24,	17,	15,	14,	10,	14,	14,	19,	24,	6,
 
-COL_WIDTH = [13, 12, 12, 24, 17, 15, 14, 10, 14, 14, 19, 24, 6, 110,]
+COL_WIDTH = [13, 12, 12, 24, 17, 15, 14, 10, 14, 14, 19, 24, 7, 110,]
 MARGINS = {
     'left':_cm_to_inch(0.6),
     'right':_cm_to_inch(0.6),
@@ -87,10 +89,14 @@ SHEET1_NAME = 'ST Dashboard'
 ## Colours
 GHD_BLUE = '#006DA3'
 WHITE = '#FFFFFF'
-BEHIND_SCHEDULE_TEXT_COLOUR = '#9c0006'
+
+ON_HOLD_TEXT_COLOUR = '#9c0006'
+BEHIND_SCHEDULE_TEXT_COLOUR = '#000000'
 AT_RISK_TEXT_COLOUR = '#9c6500'
 ON_TRACK_TEXT_COLOUR = '#375623'
-BEHIND_SCHEDULE_CELL_FILL = '#ffc7ce'
+
+ON_HOLD_CELL_FILL = '#ffc7ce'
+BEHIND_SCHEDULE_CELL_FILL = '#FF0000'
 AT_RISK_CELL_FILL = '#ffeb9c'
 ON_TRACK_CELL_FILL = '#c6efce'
 MANDATORY_INPUT_CELL_FILL = '#ff6d4b'
@@ -111,6 +117,10 @@ HEADER_FORMAT = {
     'border_color': WHITE,
     'font_color': WHITE,
     'font_size': 11,
+}
+ON_HOLD_FORMAT = {
+    'bg_color': ON_HOLD_CELL_FILL,
+    'font_color': ON_HOLD_TEXT_COLOUR,
 }
 BEHIND_SCHEDULE_FORMAT = {
     'bg_color': BEHIND_SCHEDULE_CELL_FILL,
@@ -165,9 +175,10 @@ SCHEDULE_D_VAL = {
         'On Track',
         'At risk of being delayed',
         'Behind Schedule',
+        'On Hold',
     ],
-    'input_title': 'Select a schedule desciption',
-    'input_message': 'Please be realistic when selecting a schedule status. Risks and issues can\'t be mitigated or resolved unless they\'re communicated.',
+    # 'input_title': 'Select a schedule desciption',
+    # 'input_message': 'Please be realistic when selecting a schedule status.',
 }
 ACTION_D_VAL = {
     'validate': 'list',
@@ -207,12 +218,25 @@ EXCLUSIONS = {
         2127971,
         2127994,
         2128118,
+        2128272,
+        2126566,
+        12518172,
+        12511240,
+        12511262,
+        2128269,
+        2128267,
+        12526272,
+        2316680,
+        12510799,
+        12540664,
+        12510429
     ],
     PM: [
         'Winston Wang',
         'Ruevern Barritt',
         'Michael Hastings',
         'Elena Bullo',
+        'Brodie Hayter',
     ]
 }
 
@@ -264,10 +288,16 @@ class Dashboard():
             intersect_mask = np.in1d(self._df.index.values, self.bst._df.index.values, assume_unique=True)
             append_mask = np.in1d(self.bst._df.index.values, self._df.index.values, assume_unique=True, invert=True)
             #Remove old jobs
+            # temp_bst = self.bst._df.loc[intersect_mask]
+            self.bst._df.sort_index(inplace=True)
             self._df = self._df[intersect_mask]
+            self._df.sort_index(inplace=True)
+            
             current_pms = self._df[PM].unique()
             #Append new jobs
             self._df = self._df.append(self.bst._df[append_mask])
+            self._df.sort_index(inplace=True)
+            self._df[PM] = self.bst._df[PM]
             #Keep track of the new projects and project managers
             new_pms = np.in1d(self.bst._df[PM], current_pms, invert=True)
             self.new_data['job'] = set(self.bst._df.index.values[append_mask])
@@ -366,16 +396,18 @@ class Dashboard():
             writer = pd.ExcelWriter(path, engine='xlsxwriter')#Create new workbook for PM
             workbook = writer.book 
             worksheet = workbook.add_worksheet(self.sheet_name)#Add a named worksheet to the workbook
+            worksheet = _sheet_setup(worksheet)
+            # writer.save()
             return writer, workbook, worksheet
         
         def _sheet_setup(worksheet):
-            worksheet.set_paper(8)
+            month = str(datetime.today().strftime('%B'))
             worksheet.set_page_view()
             worksheet.set_landscape()
             worksheet.set_zoom(60)
             worksheet.hide_gridlines(1)
             worksheet.set_header(
-                f'&L&[Picture]&C&14&"Arial,Bold"GHD Monthly Dashboard\nIssue {ISSUE}: ({MONTH})&R&[Picture]', 
+                f'&L&[Picture]&C&14&"Arial,Bold"GHD Monthly Dashboard\nIssue {ISSUE}: ({month})&R&[Picture]', 
                 {
                     'image_left': GHD_LOGO,
                     'image_right': ST_LOGO,
@@ -391,7 +423,8 @@ class Dashboard():
             worksheet.repeat_rows(0)
             _row_start, _row_finish, _col_start, _col_finish = self.printable_cells
             worksheet.print_area(_row_start, _row_finish, _col_start, _col_finish)
-            return
+            worksheet.set_paper(8)
+            return worksheet
 
         def _header_format(workbook, sheet):
             header_format = {**BASE_FORMAT, **HEADER_FORMAT}
@@ -425,6 +458,9 @@ class Dashboard():
                     
                     elif schedule.lower() ==  SCHEDULE_D_VAL['source'][2].lower():
                         cell_format = {**cell_format, **BEHIND_SCHEDULE_FORMAT}
+                    
+                    elif schedule.lower() ==  SCHEDULE_D_VAL['source'][3].lower():
+                        cell_format = {**cell_format, **ON_HOLD_FORMAT}
                 
                 if not contains_data:
                     cell_format = {**cell_format, **MANDATORY_INPUT_FORMAT}
@@ -468,7 +504,7 @@ class Dashboard():
         else:
             _format_cells(_wb, _ws, df=self._df)
 
-        _sheet_setup(_ws)
+        # _sheet_setup(_ws)
         _wr.save()#Save the workbook
         
     def _get_output_name(self, path, pm=True):
@@ -529,10 +565,15 @@ class Bst10(Dashboard):
         return
 
     def _clean(self, drop_proposals=True):
-        import unicodedata
-        cols = self._df.columns.to_list()
-        cols = [unicodedata.normalize('NFKD', x).encode('ascii','ignore') for x in cols]
-        self._df.columns = [x.decode("UTF-8") for x in cols]
+        # import unicodedata
+        # cols = self._df.columns.to_list()
+        # cols = [unicodedata.normalize('NFKD', x).encode('ascii','ignore') for x in cols]
+        # self._df.columns = [x.decode("UTF-8") for x in cols]
+        self._df.sort_values(by='Transaction Date', ascending=False, inplace=True)
+        self._df = self._df[~self._df.index.duplicated(keep='first')]
+        self._df = self._df[~self._df.index.isna()]
+        self._df = self._df[self._df['Project Status'] == 'Active']
+        self._df.index = self._df.index.astype(int)
         self._df = self._df[Dashboard.BST_RAW_COLS]
         self._df.rename(columns=BST_MAPPING, inplace=True)
         if drop_proposals:
@@ -576,6 +617,24 @@ def _st_pn_regex_check(purchase_order_col, project_number_col):
     else:
         return False
 
+class MakeDashboard():
+    def __init__(self, prev_dash_path, pm_sheets_path, out_path, bst_path):
+        self.prev_dash_path = prev_dash_path
+        self.pm_sheets_path = pm_sheets_path 
+        self.out_path = out_path    
+        self.bst_path = bst_path    
+
+    def run(self, client):
+        new_dash = Dashboard(client="Sydney Trains",)
+
+        new_dash.load_prev_dashboard(self.prev_dash_path)
+
+        new_dash.load_bst(self.bst_path)
+
+        new_dash.load_pm(self.pm_sheets_path, all_in_path=True)
+
+        new_dash.export(self.out_path)
+        
 if __name__ == "__main__":
 
 
@@ -597,13 +656,23 @@ if __name__ == "__main__":
 
 #     #TODO: Sydney trains here
 
-    prev_dash_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\Monthly Dashboards\September 2019") / "Dashboard.xlsx"
+    dash_month = "July 2021"
 
-    pm_sheets_path = Path(r"\\teams.ghd.com@SSL\DavWWWRoot\operations\SOCSydneyTrainsPanel\Documents\Monthly Dashboards\October 2019")
+    # parent = Path(r'\\gis010495\c$\Users\kschroder-turner\OneDrive - GHD\Projects\Misc\st_dashboard\data\Monthly Dashboards\July 2020')
+    
+    parent = Path(r'C:\Users\kschroder-turner\OneDrive - GHD\Projects\Misc\st_dashboard\data\Monthly Dashboards') / dash_month
 
-    bst_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\Monthly Dashboards") / "October 2019" / "BST" / "Project Detail.xlsx"
+    prev_dash_path = parent / 'PREV' / 'Dashboard.xlsx'
+    
+    # output_path = Path(r"\\teams.ghd.com@SSL\DavWWWRoot\operations\SOCSydneyTrainsPanel\Documents\Monthly Dashboards") / dash_month
+    output_path = parent #/ 'test'
+    output_path.mkdir(parents=True, exist_ok=True)
 
-    output_path = Path(DASHBOARD_DIRECTORY) / MONTH
+    # output_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\Monthly Dashboards\November 2019")
+
+    pm_sheets_path = parent / "PM"
+
+    bst_path = parent / "BST" / "Project Detail.xlsx"
 
     new_dash = Dashboard(client="Sydney Trains",)
 
@@ -612,7 +681,7 @@ if __name__ == "__main__":
     new_dash.load_bst(bst_path)
 
 #     new_dash.show_new()
-
+#
     new_dash.load_pm(pm_sheets_path, all_in_path=True)
 
-    new_dash.export(output_path)
+    new_dash.export(output_path, pm=False)
