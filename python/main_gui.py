@@ -17,9 +17,9 @@ class MyFirstGUI:
         self.close_button = Button(master, text="Close", command=master.quit)
         self.close_button.grid(row=3, column=2)
 
-        Label(master, text="Previous Dashboard path").grid(row=0)
+        Label(master, text="Previous Dashboard data_path").grid(row=0)
         Label(master, text="Path to PM Sheets").grid(row=1)
-        Label(master, text="Output path").grid(row=2)
+        Label(master, text="Output data_path").grid(row=2)
         Label(master, text="BST Data Path").grid(row=3)
 
         self.prev_dash_path_e = Entry(master)

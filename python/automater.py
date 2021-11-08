@@ -181,7 +181,7 @@ EXCLUSIONS = {
 }
 
 #TODO: Make .exe version
-#TODO: Fix the path and directory bug. Access the sharepoint directly.
+#TODO: Fix the data_path and directory bug. Access the sharepoint directly.
 #TODO: Need to be able to customise the month based on current month. Annette could possibly just use the script to change the month
 #TODO: Copy last month's data into new sheet for current month
 #TODO: Comment the code
@@ -247,7 +247,7 @@ def _export_pm_sheets(df):
     if not _output_dir.exists():
         _output_dir.mkdir()
     for name in _all_pms: 
-        _name = _output_dir / Path(str(name)+XLSX) #Generate file path and name for PM
+        _name = _output_dir / Path(str(name)+XLSX) #Generate file data_path and name for PM
         _df = df[df[PM]==name] #Extract PM data from main dataframe
         _export_sheet(_name, _df, sheet_name=SHEET1_NAME)
     return

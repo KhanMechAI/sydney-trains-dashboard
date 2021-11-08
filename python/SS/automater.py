@@ -62,7 +62,7 @@ HEADER_FORMAT = {
 COL_WIDTH = 25
 
 
-#TODO: Fix the path and directory bug. Access the sharepoint directly.
+#TODO: Fix the data_path and directory bug. Access the sharepoint directly.
 #TODO: Add dropdown menu to the phase column
 #TODO: Need to be able to customise the month based on current month. Annette could possibly just use the script to change the month
 #TODO: Copy last month's data into new sheet for current month
