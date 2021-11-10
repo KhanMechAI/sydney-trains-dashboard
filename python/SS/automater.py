@@ -65,7 +65,7 @@ COL_WIDTH = 25
 #TODO: Fix the data_path and directory bug. Access the sharepoint directly.
 #TODO: Add dropdown menu to the phase column
 #TODO: Need to be able to customise the month based on current month. Annette could possibly just use the script to change the month
-#TODO: Copy last month's data into new sheet for current month
+#TODO: Copy last month's test_data into new sheet for current month
 #TODO: Comment the code
 #TODO: Add to github then create a markdown user guide.
 

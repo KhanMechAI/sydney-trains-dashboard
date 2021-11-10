@@ -3,10 +3,12 @@ import os
 import warnings
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Union
+from collections import defaultdict
 
 import numpy as np
 import pandas as pd
+import dynamic_yaml
 
 
 # TODO make it be able to read from a URL.
@@ -16,81 +18,111 @@ def _cm_to_inch(length):
     return np.divide(length, 2.54)
 
 
+def resolve_list(config_list):
+    return [config_list[x] for x in range(len(config_list))]
+
+
+def resolve_dictionary(config_dict):
+    return {k: v for k, v in config_dict.items()}
+
+
 # Directory constants
 
 DASHBOARD_DIRECTORY = r"C:\Users\kschroder-turner\Documents\TEMP\Monthly Dashboards"
+
+
+def reset_index(df, index_start: int = 1):
+    df.reset_index(inplace=True, drop=True)
+
+    # make index start from the new index start point, default index is 0, new default is 1
+    df.index = df.index + index_start
+    return df
+
+
+def drop_empty_rows(df) -> pd.DataFrame:
+    """
+    Pandas doesnt recognise empty string as an empty value. So change all empty strings to nan, then drop and
+    replace all nans with empty strings.
+    """
+    df.replace(["", " "], np.nan, inplace=True)
+    df.dropna(inplace=True, how="all")
+    df.replace(np.nan, "", inplace=True)
+
+    # need to reset index after dropped rows.
+    df = reset_index(df)
+
+    return df
 
 
 class DataLoader:
     EXCEL_FILES = (".xlsx", ".xlsm")
 
     def __init__(self,
-                 exclusions: Dict[str, List], # {column string: [list of exclusions]}
-                 column_order: List,
-                 index_col: [str, None]=None,
+                 data_path: [str, Path],
+                 exclusions: Dict[str, List],  # {column string: [list of exclusions]}
+                 column_order: List[str],
                  date_cols: [None, List[str]] = None):
 
-        self.index_col = index_col
         self.exclusions = exclusions
         self.column_order = column_order
         self.date_cols: [None, List[str]] = date_cols
+        self.df: pd.DataFrame
 
-    def _index_handler(self, df) -> pd.DataFrame:
-        df = df[~df[self.index_col].duplicated(keep="first")]
-        df = df.loc[df.index.dropna()]
-        df.index = df.index.astype("uint64")
-        df.sort_index(inplace=True)
-        return df
+        self.load_data(Path(data_path))
 
-    def _add_missing_col(self, df) -> pd.DataFrame:
+    def add_missing_columns(self):
         for col in self.column_order:
-            if col not in df.columns:
-                df[col] = ""
+            if col not in self.df.columns:
+                self.df[col] = ""
 
-        return df
-
-    def _date_time_handler(self, df) -> pd.DataFrame:
+    def date_time_handler(self):
         """
         Converts datetimes to string representation to handle non-standard datetime input.
         """
-        df[self.date_cols] = df[self.date_cols].astype(str)
-        return df
+        if self.date_cols is None:
+            return
+        for col in self.date_cols:
+            if col in self.df.columns:
+                self.df[col] = self.df[col].astype(str)
 
-    def _exclude(self, df) -> pd.DataFrame:
+    def exclude(self):
 
         for column, exclusions in self.exclusions.items():
-            df = df[~df[column].isin(exclusions)]
+            self.df = self.df[~self.df[column].isin(exclusions)]
 
-        return df
+    def clean_data(self):
+        self.df = self.df.loc[:, ~self.df.columns.str.contains("^Unnamed")]
+        self.date_time_handler()
+        self.df = drop_empty_rows(self.df)
 
-    def _clean_data(self, df) -> pd.DataFrame:
-        df = df.loc[:, ~df.columns.str.contains("^Unnamed")]
-        self._index_handler(df)
-        self._add_missing_col(df)
-        self._date_time_handler(df)
-        self._exclude(df)
-        return df
-
-    def load_data(self, path: [str, Path]) -> pd.DataFrame:
+    def load_data(self, path: [str, Path]):
         data_path = Path(path)
         if not data_path.exists():
             raise FileNotFoundError
         elif data_path.suffix not in self.EXCEL_FILES:
             raise ValueError(f"Input file type not one of {self.EXCEL_FILES}")
 
-        df: pd.DataFrame = pd.read_excel(data_path, index_col=self.index_col)
-        return self._clean_data(df)
+        self.df: pd.DataFrame = pd.read_excel(data_path, index_col=None)
+        self.clean_data()
+        return
 
+    def sort(self, sort_col, ascending=False):
+        self.df.sort_values(by=sort_col, ascending=ascending, inplace=True)
 
-class BSTLoader(DataLoader):
-    DEFAULT_SHEET_IDX = 0
+    def filter(self, filter_col: str, filter_val: Any):
+        self.df = self.df[self.df[filter_col] == filter_val]
 
-    def __init__(self, path: [str, Path], exclusions: Dict[str, List], column_order: List, index_col: int,):
-        super().__init__(exclusions, column_order, index_col)
+    def remove_duplicates(self, duplicate_col: [str, list, None] = None):
+        self.df.drop_duplicates(subset=duplicate_col, keep="first", inplace=True, ignore_index=True)
 
-        self.index_col = index_col
+    def select_columns(self, columns: List[str]):
+        self.df = self.df[columns]
 
-        self.df: pd.DataFrame = self.load_data(path)
+    def rename_columns(self, column_mapping: dict):
+        self.df.rename(columns=column_mapping, inplace=True, )
+
+    def rename_index(self, new_name: str):
+        self.df.index.rename(new_name, inplace=True)
 
     def project_managers(self, project_manager_column):
         return set(self.df[project_manager_column].unique())
@@ -98,35 +130,43 @@ class BSTLoader(DataLoader):
     def projects(self, project_column):
         return set(self.df[project_column].unique())
 
-    def rename_index(self, new_name: str):
-        self.df.index.rename(new_name, inplace=True)
+    def set_index(self, index_column: [str, List]):
+        self.df.set_index(keys=index_column, inplace=True)
+
+    def select_in(self, column: str, values: [list]) -> pd.DataFrame:
+        return self.df[self.df[column].isin(values)]
+
+    def clear_data(self, columns: List[str]):
+        self.df[columns] = ""
+
+    def append(self, df_to_append: pd.DataFrame) -> pd.DataFrame:
+        return self.df.append(df_to_append)
+
+    def set_column_order(self):
+        self.df = self.df[self.column_order]
+
+
+class BSTLoader(DataLoader):
+    dup_filter_col: str
+    DEFAULT_SHEET_IDX = 0
+
+    def __init__(self, path: [str, Path], exclusions: Dict[str, List], column_order: List[str],
+                 date_cols: [None, List[str]] = None):
+        super().__init__(path, exclusions, column_order, date_cols)
 
     def remove_proposals(self,
                          proposal_col: str,
                          proposal_str: str,
-                         prop_number_lb: int = 210999999,
-                         prop_number_ub: int = 210900000):
+                         prop_number_lb: int = 210900000,
+                         prop_number_ub: int = 210999999):
         self.df = self.df[self.df[proposal_col] != proposal_str]  # Removes BST10 props
         self.df.drop([proposal_col], inplace=True, axis=1)  # Remove the task code column
-        self.df = self.df[(self.df.index < prop_number_ub) | (
-                self.df.index > prop_number_lb)]  # remove projects in proposal number range to cover historic
+        self.df = self.df[
+            (self.df.index < prop_number_ub) | (
+                    self.df.index > prop_number_lb)]  # remove projects in proposal number range to cover historic
         # proposals
 
         return self.df
-
-    def sort(self, sort_col):
-        self.df.sort_values(by=sort_col, ascending=False, inplace=True)
-
-    def filter(self, filter_col: str, filter_val: Any):
-        self.df = self.df[self.df[filter_col] == filter_val]
-
-    def select_columns(self, bst_columns: List[str]):
-        self.df = self.df[bst_columns]
-
-
-    def rename_columns(self, column_mapping: dict):
-        self.df.rename(columns=column_mapping, inplace=True)
-
 
 
 class ExcelFormats:
@@ -176,31 +216,35 @@ class ExcelFormats:
     def check_st_project_number_error(self, project) -> bool:
         return True if project in self.client_project_number_errors else False
 
-    def check_mandatory_column(self, column) -> bool:
-        return True if column in self.mandatory_cols else False
+    def check_mandatory_column(self, column, value) -> bool:
+        check_mandatory_col = True if column in self.mandatory_cols else False
+        check_empty_value = True if value in ["", " ", None] else False
+        return check_empty_value and check_mandatory_col
 
     def get_base_format(self):
         return self.workbook.add_format(self.base)
 
     def get_schedule_format(self,
-                            schedule: str,
+                            value: str,
                             column: str,
                             pm: str,
                             project: int
                             ):
-        cell_format = self.base
-        if schedule == "on_hold":
+        cell_format = dict(self.base)
+        if value == "On Hold":
             cell_format.update(self.on_hold)
-        elif schedule == "behind_schedule":
+        elif value == "Behind Schedule":
             cell_format.update(self.behind_schedule)
-        elif schedule == "on_track":
+        elif value == "On Track":
             cell_format.update(self.on_track)
-        elif schedule == "at_risk":
+        elif value == "At risk of being delayed":
             cell_format.update(self.at_risk)
+        elif value == "":
+            pass
         else:
-            raise ValueError(f"Schedule not defined: {schedule}")
+            raise ValueError(f"Schedule not defined: {value}")
 
-        if self.check_mandatory_column(column):
+        if self.check_mandatory_column(column, value):
             cell_format.update(self.mandatory_input)
 
         if self.check_new_pm(pm):
@@ -220,7 +264,7 @@ class ExcelFormats:
     def get_format(self, format_type: str, column: str, pm: str, project: int, value=None):
         if format_type == "schedule":
             return self.get_schedule_format(
-                schedule=value,
+                value=value,
                 column=column,
                 pm=pm,
                 project=project
@@ -239,25 +283,23 @@ class ExcelGenerator:
     a3_paper = 8
 
     def __init__(self,
-                 out_path: [str, Path],
+                 workbook,
                  margins: Dict[str, float],
                  issue: int,
                  df: pd.DataFrame,
                  formats: ExcelFormats,
                  pm_col: str,
                  project_col: str,
-                 column_widths: List[float, int],
+                 column_widths: List[Union[float, int]],
                  ghd_image_path: str = None,
                  client_image_path: str = None,
-                 n_repeat_rows: int = 1,
+                 n_repeat_rows: int = 0,
                  schedule_col: str = "Schedule"
                  ):
         self.pm_col = pm_col
         self.project_col = project_col
         self.schedule_col = schedule_col
-        self.out_path = Path(out_path)
-        self.writer = pd.ExcelWriter(self.out_path, engine="xlsxwriter")
-        self.workbook = self.writer.book
+        self.workbook = workbook
         self.worksheets: Dict[str,] = {}
         self.margins: Dict[str, float] = margins  # expects dict of 4 strings int/floats in units inches
         self.issue = issue
@@ -278,12 +320,12 @@ class ExcelGenerator:
 
     @property
     def header_string(self):
-        return f"&L&[Picture]&C&14&'Arial,Bold'GHD Quarterly Dashboard\nIssue {self.issue}: ({self.get_month})&R&[" \
-               f"Picture]"
+        return f'&L&[Picture]&C&14&"Arial,Bold"GHD Quarterly Dashboard\nIssue {self.issue}: ({self.get_month})&R&[' \
+               f'Picture]'
 
     @property
     def protected_cells(self):
-        # [row 1 (headers take 1 row), last row of data, column A, last column of data
+        # [row 1 (headers take 1 row), last row of test_data, column A, last column of test_data
         return [1, self.data_height + 1, 0, self.data_width + 1]
 
     @property
@@ -353,16 +395,16 @@ class ExcelGenerator:
         format_args = dict(
             format_type="schedule",
             pm=row[self.pm_col],
-            project=row[self.project_col]
+            project=row[self.project_col],
+            value=row[self.schedule_col],
         )
-        for col_idx, column, value in enumerate(zip(row.index, row.values)):
-            #set the remainder of the args for the cell formatting
-            format_args.update({"column": column, "value": value})
-            self.write_cell(worksheet, row_idx, col_idx, value, format_args)
+        for col_idx, (column, value) in enumerate(zip(row.index, row.values)):
+            # set the remainder of the args for the cell formatting
+            format_args.update({"column": column})
+            cell_format = self.formats.get_format(**format_args)
+            self.write_cell(worksheet, row_idx, col_idx, value, cell_format)
 
-    def write_cell(self, worksheet, row_idx: int, col_idx: int, value, format_args: dict):
-
-        cell_format = self.formats.get_format(**format_args)
+    def write_cell(self, worksheet, row_idx: int, col_idx: int, value, cell_format):
 
         worksheet.write(row_idx, col_idx, value, cell_format)
 
@@ -371,384 +413,307 @@ class ExcelGenerator:
         for row_idx, row in self.df.iterrows():
             self.write_row(worksheet, row, row_idx)
 
-    def setup_header(self, sheet):
-        header_row = 0
+    def setup_header(self, sheet_name):
+        header_row_idx = 0
         header_format = self.formats.get_header_format()
-        header_format_obj = self.workbook.add_format(header_format)
-        for col_num, col_width, col_name in enumerate(zip(self.column_widths, self.df.columns)):
-            sheet.write(header_row, col_num, col_name, header_format_obj)
+        sheet = self.get_worksheet(sheet_name)
+        for col_num, (col_width, col_name) in enumerate(zip(self.column_widths, self.df.columns)):
+            sheet.write(header_row_idx, col_num, col_name, header_format)
             sheet.set_column(col_num, col_num, col_width)
 
 
 class DataConsolidator:
-    num_cols = 10
-    PM_SUB_DIR = "Project Manager Sheets"
 
-    def __init__(self, config, bst_loader: BSTLoader, previous_dashboard: [None, DataLoader]=None, project_manager_sheets: [None, List[DataLoader]]=None, client=None):
-        self.client = client
-        self.config = config
-        self.projects = set()
-        self.project_managers = set()
-        self._new_data = {}
-        self._editable_cells = []
-        self.new_data = {
-            "pm": set(),
-            "job": set(),
-        }
+    def __init__(self,
+                 bst_loader: BSTLoader,
+                 project_manager_col: str,
+                 project_col: str,
+                 column_order: List[str],
+                 previous_dashboard: [None, DataLoader] = None,
+                 project_manager_sheets: [None, List[DataLoader]] = None,
+                 ):
+        self.project_manager_col = project_manager_col
+        self.project_col = project_col
+        self.column_order = column_order
+        self.new_data = defaultdict()
         self.bst: BSTLoader = bst_loader
-        self.previous_dashboard: DataLoader = previous_dashboard
-        self.project_manager_sheets: DataLoader = project_manager_sheets
-
-    def c
-
-    def _load_conflict_handler(self, bst=True, other_df=None):
-        if bst:
-            # Keep jobs that are in both BST and the Prev Dashboard. = intersection of master with bst.
-            # Add new jobs from BST to dashboard. = set difference of bst to master then append to master
-            # Remove old jobs from dashboard. = negate the master bst intersection
-            intersect_mask = np.in1d(self.df.index.values, self.bst._df.index.values, assume_unique=True)
-            append_mask = np.in1d(self.bst._df.index.values, self.df.index.values, assume_unique=True, invert=True)
-            # Remove old jobs
-            # temp_bst = self.bst.df.loc[intersect_mask]
-            self.bst._df.sort_index(inplace=True)
-            self.df = self.df[intersect_mask]
-            self.df.sort_index(inplace=True)
-
-            current_pms = self.df[PM].unique()
-            # Append new jobs
-            self.df = self.df.append(self.bst._df[append_mask])
-            self.df.sort_index(inplace=True)
-            self.df[PM] = self.bst._df[PM]
-            # Keep track of the new projects and project managers
-            new_pms = np.in1d(self.bst._df[PM], current_pms, invert=True)
-            self.new_data["job"] = set(self.bst._df.index.values[append_mask])
-            self.new_data["pm"] = set(self.bst._df.loc[new_pms, PM])
-        else:
-            # TODO: This code is outdated, fix to match above
-
-            if not other_df:
-                raise ValueError("If bst=False, other_df must be specified")
-            other_df_projects = set(other_df.index.values)
-            proj_to_keep = self.projects.intersection(other_df_projects)
-            other_df = other_df.loc[proj_to_keep]
-
-            # ToDo: Check what BST_COLS used to be
-            non_bst_cols = [x for x in self.config.lists.col_order if x not in BST_COLS]
-            self.df.loc[proj_to_keep, non_bst_cols] = other_df[non_bst_cols]
-
-    def load_prev_dashboard(self, path_to_dashboard):
-        df = pd.read_excel(path_to_dashboard, index_col=0)
-        df = self._load_helper(df)
-        if self.df.empty:
-            self.df = df
-        else:
-            self._load_conflict_handler(bst=False, other_df=df)
-
-        self.projects = set(self.df.index.values)
-        self.project_managers = set(self.df[PM].unique())
-
-        self.df[[SCH, CUR_STAT, NEXT_ACTION, ACTION_BY]] = ""
-
-    def load_pm(self, path, all_in_path=True, ):
-        if all_in_path:
-            for f_name in os.listdir(path):
-                file = path / f_name
-                if XLSX in f_name and TMP_FILE not in f_name:
-                    self._load_pm(file)
-        else:
-            self._load_pm(path)
-
-    def _load_pm(self, path):
-        df = pd.read_excel(path, index_col=0)
-        dups = self._index_dup_check(df, path)
-        if dups:
-            df = self._load_helper(df)
-            df = self._check_pm_error(df)
-            overwrite_mask = df.index.values
-            self.df.loc[overwrite_mask] = df.loc[overwrite_mask]
-
-    def _check_pm_error(self, df):
-        # TODO: Print Error to logging file. So make a logging file as well....
-        mask = np.isin(df.index.values, self.df.index.values)
-        if len(df[~mask].index) > 0:
-            msg0 = f"Project manager {df[PM].unique().astype(str)} might have errors. Please check the PM Sheet."
-            msg1 = f"Project(s) found not in master: {df[~mask].index.values.astype(str)}"
-            warnings.warn(msg0, Warning)
-            warnings.warn(msg1, Warning)
-        return df[mask]
-
-    def _index_dup_check(self, df, path):
-        len_idx_init = len(df.index)
-        len_idx_fin = len(set(df.index))
-        if len_idx_init != len_idx_fin:
-            msg1 = f"Duplicate index values. Unique indices: {len_idx_init}, Total indicies: {len_idx_fin}. Skipping " \
-                   f"{path.name}"
-            warnings.warn(msg1, Warning)
-            return False
-        return True
-
-    def export(self, path, pm=True, to_excel=True):
-        if to_excel:
-            path.mkdir(parents=True, exist_ok=True)
-            if pm:
-                pm_path = path / self.PM_SUB_DIR
-                pm_path.mkdir(parents=True, exist_ok=True)
-                for pm in self.df[PM].unique():
-                    self._export_to_excel(pm_path, pm)
-            self._export_to_excel(path, pm=False)
-
-    def _export_to_excel(self, path, pm):
-        def _setup_excel():
-            nonlocal path
-            path = self._get_output_name(path, pm=pm)
-            writer = pd.ExcelWriter(path, engine="xlsxwriter")  # Create new workbook for PM
-            workbook = writer.book
-            worksheet = workbook.add_worksheet(self.sheet_name)  # Add a named worksheet to the workbook
-            worksheet = _sheet_setup(worksheet)
-            # writer.save()
-            return writer, workbook, worksheet
-
-        def _sheet_setup(worksheet):
-            month = str(datetime.today().strftime("%B"))
-            worksheet.set_page_view()
-            worksheet.set_landscape()
-            worksheet.set_zoom(60)
-            worksheet.hide_gridlines(1)
-            worksheet.set_header(
-                f"&L&[Picture]&C&14&'Arial,Bold'GHD Monthly Dashboard\nIssue {ISSUE}: ({month})&R&[Picture]",
-                {
-                    "image_left": GHD_LOGO,
-                    "image_right": ST_LOGO,
-                }
-            )
-            worksheet.set_footer("&CPage &P of &N")
-            worksheet.set_margins(
-                left=MARGINS["left"],
-                right=MARGINS["right"],
-                top=MARGINS["top"],
-                bottom=MARGINS["bottom"],
-            )
-            worksheet.repeat_rows(0)
-            _row_start, _row_finish, _col_start, _col_finish = self.printable_cells
-            worksheet.print_area(_row_start, _row_finish, _col_start, _col_finish)
-            worksheet.set_paper(8)
-            return worksheet
-
-        def _header_format(workbook, sheet):
-            header_format = {**BASE_FORMAT, **HEADER_FORMAT}
-            header_format = workbook.add_format(header_format)
-            for col_num, value in enumerate(HEADERS):
-                sheet.write(0, col_num, value, header_format)
-                sheet.set_column(col_num, col_num, COL_WIDTH[col_num])
-
-        def _data_validation(sheet, col, val_fmt):
-            return sheet.data_validation(*self._data_val_range(col), val_fmt)
-
-        def _format_cells(workbook, sheet, df=pd.DataFrame()):
-            _row_start, _row_finish, _col_start, _col_finish = self.protected_cells(df)
-
-            def _get_format(schedule=None, contains_data=True, col=None):
-                cell_format = BASE_FORMAT
-                if df.index.values[row - 1] in self.new_data["job"]:
-                    cell_format = {**cell_format, **NEW_JOB_FORMAT}
-
-                if df.iloc[row - 1, df.columns.get_loc(PM)] in self.new_data["pm"]:
-                    cell_format = {**cell_format, **NEW_PM_FORMAT}
-
-                if _st_pn_regex_check(
-                        df.iloc[row - 1, df.columns.get_loc(ST_REF_PO)],
-                        df.iloc[row - 1, df.columns.get_loc(ST_P_NUM)]
-                ):
-                    cell_format = {**cell_format, **ST_PNUM_ERROR_FORMAT}
-
-                if schedule:
-                    if schedule.lower() == SCHEDULE_D_VAL["source"][0].lower():
-                        cell_format = {**cell_format, **ON_TRACK_FORMAT}
-
-                    elif schedule.lower() == SCHEDULE_D_VAL["source"][1].lower():
-                        cell_format = {**cell_format, **AT_RISK_FORMAT}
-
-                    elif schedule.lower() == SCHEDULE_D_VAL["source"][2].lower():
-                        cell_format = {**cell_format, **BEHIND_SCHEDULE_FORMAT}
-
-                    elif schedule.lower() == SCHEDULE_D_VAL["source"][3].lower():
-                        cell_format = {**cell_format, **ON_HOLD_FORMAT}
-
-                if not contains_data:
-                    cell_format = {**cell_format, **MANDATORY_INPUT_FORMAT}
-
-                if col:
-                    cell_format = {**cell_format, **DATE_FORMAT}
-
-                return cell_format
-
-            if not df.empty:
-                for row in range(_row_start, _row_finish):
-                    schedule = _check_not_nan(df.iloc[row - 1, df.columns.get_loc(SCH)])
-                    base_cell_format = _get_format(schedule=schedule)
-                    for col in range(_col_start, _col_finish):
-                        cell_format = base_cell_format
-                        if col == 0:
-                            value = df.index.values[row - 1]
-                        else:
-                            value = _check_not_nan(df.iloc[row - 1, col - 1])
-                            if pm and (col in MANDATORY_COL_IDX) and not value:
-                                cell_format = {**cell_format, **_get_format(contains_data=value)}
-                            if col in DATE_COLS:
-                                cell_format = {**cell_format, **_get_format(col=col)}
-                        write_format = workbook.add_format(cell_format)
-                        sheet.write(row, col, value, write_format)
-
-        _wr, _wb, _ws = _setup_excel()  # Specify the header format
-
-        if pm:
-            _ws.protect()  # Lock all the cells
-
-        _header_format(_wb, _ws)  # Format the header cells
-        _data_validation(_ws, PHASE, PHASE_D_VAL)  # Set up data validation
-        _data_validation(_ws, SCH, SCHEDULE_D_VAL)
-        _data_validation(_ws, ACTION_BY, ACTION_D_VAL)
-
-        self.df.sort_values(by=PM, axis=0, inplace=True)
-
-        if pm:
-            _format_cells(
-                _wb,
-                _ws,
-                df=self.df[self.df[PM] == pm]
-            )  # Unlock the desired range of editable cells and paste in data
-        else:
-            _format_cells(_wb, _ws, df=self.df)
-
-        # _sheet_setup(_ws)
-        _wr.save()  # Save the workbook
-
-    def _get_output_name(self, path, pm=True):
-        if pm:
-            path = path / (pm + XLSX)
-        else:
-            path = path / (self.workbook_name + XLSX)
-        return path
-
-    def _data_val_range(self, col):
-        _col = self.df.columns.get_loc(col) + 1
-        return 1, _col, self.df.shape[0] + 1, _col
-
-    def protected_cells(self, df):
-        return [1, df.shape[0] + 1, 0, df.shape[1] + 1]
+        self.previous_dashboard: [DataLoader, None] = previous_dashboard
+        self.project_manager_sheets: [List[DataLoader], None] = project_manager_sheets
+        self.master: pd.DataFrame = pd.DataFrame()
+        self.pm_df: pd.DataFrame = pd.DataFrame()
 
     @property
-    def printable_cells(self):
-        modifier = [0, -1, 0, -1, ]
-        return [sum(x) for x in zip(self.protected_cells(self.df), modifier)]
+    def new_project_managers(self):
+        return self.new_data["project_managers"]
 
-    def show_new(self):
-        print(f"\nNew project managers:\n")
-        print(f"{self.new_data['pm']}")
-        print(f"\nNew projects:\n")
-        print(f"{self.new_data['job']}")
+    @property
+    def new_projects(self):
+        return self.new_data["projects"]
 
+    @property
+    def project_managers(self):
+        return self.master[self.project_manager_col].unique()
 
-def _check_not_nan(value):
-    if not value:
-        return None
-    elif str(value) == "nan":
-        return None
-    elif type(value) == str:
-        return value
-    else:
-        return value
+    @property
+    def projects(self):
+        return self.master[self.project_col].unique()
 
+    def get_new_project_managers(self) -> set:
+        new_pms = self.bst.projects(self.project_manager_col)
+        if self.previous_dashboard is not None:
+            prev_pms = self.previous_dashboard.projects(self.project_manager_col)
+            new_pms = new_pms.intersection(prev_pms)
+        return new_pms
 
-def _st_pn_regex_check(purchase_order_col, project_number_col):
-    match1 = ST_PN_REGEX.match(str(purchase_order_col))
-    if match1:
-        match2 = ST_PN_REGEX.match(str(project_number_col))
-        if match2:
-            po_nums = [match1.groupdict()["st_pn"]]
-            p_nums = [match2.groupdict()["st_pn"]]
-            if len(p_nums) == len(po_nums):
-                if po_nums == p_nums:
-                    return False
-                else:
-                    return True
-            else:
-                return True
+    def get_new_projects(self) -> set:
+        new_projects = self.bst.projects(self.project_col)
+        if self.previous_dashboard is not None:
+            prev_projects = self.previous_dashboard.projects(self.project_col)
+            new_projects = new_projects.intersection(prev_projects)
+        return new_projects
+
+    def find_new_data(self):
+        self.new_data["project_managers"] = self.get_new_project_managers()
+        self.new_data["projects"] = self.get_new_projects()
+
+    def create_master(self) -> pd.DataFrame:
+        if "projects" not in self.new_data:
+            raise AttributeError("New test_data not searched. Please run 'find_new_data()' first")
+
+        filtered_bst: pd.DataFrame = self.bst.select_in(self.project_col, self.new_data["projects"])
+
+        if self.previous_dashboard is not None:
+            self.master = self.previous_dashboard.append(filtered_bst)
         else:
-            return False
-    else:
-        return False
+            self.master = filtered_bst
+
+        self.master = drop_empty_rows(self.master)
+        return self.master
+
+    def join_project_manager_sheets(self):
+        if self.project_manager_sheets is None:
+            raise ValueError("No project manager sheets passed")
+
+        for pm_sheet in self.project_manager_sheets:
+            self.pm_df = pm_sheet.append(self.pm_df)
+
+        self.pm_df = drop_empty_rows(self.pm_df)
+
+        return
+
+    def load_pm_sheets_to_master(self):
+        self.join_project_manager_sheets()
+        master = self.master.copy(deep=True)
+        master.set_index(keys=self.project_col, inplace=True)
+
+        pm_df = self.pm_df.copy(deep=True)
+        pm_df.set_index(keys=self.project_col, inplace=True)
+
+        master.update(pm_df, overwrite=True)
+        master.reset_index(inplace=True, drop=False)
+
+        master = drop_empty_rows(master)
+
+        self.master = master[self.column_order]
+
+    def filter(self, filter_col: str, filter_val: Any):
+        return self.master[self.master[filter_col] == filter_val]
+
+    def filter_by_project_manager(self, project_manager: str):
+        return self.filter(self.project_manager_col, project_manager)
+
+    def filter_by_project(self, project: str):
+        return self.filter(self.project_col, project)
 
 
-class MakeDashboard():
-    def __init__(self, prev_dash_path, pm_sheets_path, out_path, bst_path):
-        self.prev_dash_path = prev_dash_path
-        self.pm_sheets_path = pm_sheets_path
-        self.out_path = out_path
-        self.bst_path = bst_path
-        BSTLoader(
+class DashboardGenerator:
+
+    def __init__(self, config_path: [str, Path], exclusions_file_path: [str, Path], issue: int):
+
+        with open(config_path) as file:
+            self.config = dynamic_yaml.load(file, recursive=True)
+
+        with open(exclusions_file_path) as file:
+            self.exclusions = dynamic_yaml.load(file, recursive=True)
+        self.ghd_logo_path = Path().cwd() / self.config.logos.ghd
+        self.client_logo_path = Path().cwd() / self.config.logos.client
+        self.issue = issue
+        self.bst: BSTLoader
+        self.previous_dashboard: DataLoader
+        self.project_manager_loaders: List[DataLoader] = []
+        self.consolidator: DataConsolidator
+
+        self.margins = self.config.margins
+
+    def _loader(self, data_path: [str, Path], is_pm: bool = False) -> DataLoader:
+        loader = DataLoader(
+            data_path=data_path,
+            exclusions=self.exclusions,
+            column_order=resolve_list(self.config.column.lists.col_order),
+            date_cols=resolve_list(self.config.column.lists.date_cols),
+        )
+        loader.rename_columns(self.config.mapping.legacy)
+        loader.remove_duplicates(duplicate_col=self.config.column.names.project_number)
+        loader.add_missing_columns()
+        if not is_pm:
+            loader.clear_data(self.config.column.lists.mandatory)
+        loader.set_column_order()
+        return loader
+
+    def _dashboard_maker(self, sheet_name: str, workbook, df: pd.DataFrame, formatter: ExcelFormats) -> ExcelGenerator:
+        dashboard = ExcelGenerator(
+            workbook=workbook,
+            margins=self.margins["inch"],
+            issue=self.issue,
+            df=df,
+            formats=formatter,
+            pm_col=self.config.column.names.pm,
+            project_col=self.config.column.names.project_number,
+            column_widths=resolve_list(self.config.column.widths),
+            ghd_image_path=self.ghd_logo_path,
+            client_image_path=self.client_logo_path,
+            schedule_col=self.config.column.names.sch,
+        )
+        dashboard.add_worksheet(sheet_name)
+        dashboard.setup_worksheet(sheet_name)
+        dashboard.setup_header(sheet_name)
+        return dashboard
+
+    def load_bst(self, bst_path: [str, Path]):
+        self.bst = BSTLoader(
             path=bst_path,
-            exclusions=config.exclusions,
+            exclusions=self.exclusions,
+            column_order=resolve_list(self.config.column.lists.col_order),
+            date_cols=None,
+        )
+        self.bst.rename_columns(self.config.mapping.bst)
+        self.bst.remove_duplicates(duplicate_col=self.config.column.names.project_number)
+        self.bst.remove_proposals(
+            proposal_col=self.config.column.names.task_code,
+            proposal_str=self.config.proposal.code,
+            prop_number_lb=self.config.proposal.lower_bound,
+            prop_number_ub=self.config.proposal.upper_bound,
+        )
+        self.bst.select_columns(resolve_list(self.config.column.lists.bst_cols))
+        self.bst.add_missing_columns()
+        self.bst.set_column_order()
 
+    def load_prev(self, dashboard_path: [str, Path]):
+        self.previous_dashboard = self._loader(dashboard_path)
+
+    def load_pm_sheets(self, pm_sheet_folder: [str, Path]):
+        pm_sheet_folder = Path(pm_sheet_folder)
+        for file_path in pm_sheet_folder.glob("*.xlsx"):
+            self.project_manager_loaders.append(self._loader(file_path))
+
+    def create_consolidator(self):
+        self.consolidator = DataConsolidator(
+            bst_loader=self.bst,
+            project_col=self.config.column.names.project_number,
+            project_manager_col=self.config.column.names.pm,
+            column_order=resolve_list(self.config.column.lists.col_order),
+            project_manager_sheets=self.project_manager_loaders
+        )
+        self.consolidator.find_new_data()
+        self.consolidator.create_master()
+
+    def update_master_with_pm(self):
+        self.consolidator.load_pm_sheets_to_master()
+
+    def create_formatter(self, workbook, new_pms, new_projects) -> ExcelFormats:
+        formatter = ExcelFormats(
+            workbook=workbook,
+            base=self.config.formats.base,
+            on_hold=self.config.formats.on_hold,
+            at_risk=self.config.formats.at_risk,
+            behind_schedule=self.config.formats.behind_schedule,
+            on_track=self.config.formats.on_track,
+            mandatory_input=self.config.formats.mandatory_input,
+            new_project=self.config.formats.new_project,
+            new_pm=self.config.formats.new_pm,
+            client_project_number_error=self.config.formats.client_project_number_error,
+            header=self.config.formats.header,
+            mandatory_cols=resolve_list(self.config.column.lists.mandatory),
+            new_pms=new_pms,
+            new_projects=new_projects,
+            client_project_number_errors=[],  # Ignoring for now as I dont think we need any more
+        )
+        return formatter
+
+    def _create_dashboard(self, out_path: [str, Path], df, sheet_name: str = "Dashboard"):
+        writer = pd.ExcelWriter(out_path, engine="xlsxwriter")
+        workbook = writer.book
+        formatter = self.create_formatter(
+            workbook=workbook,
+            new_pms=self.consolidator.new_project_managers,
+            new_projects=self.consolidator.new_project_managers,
         )
 
-    def run(self, client):
-        new_dash = Dashboard(client="Sydney Trains", )
+        dashboard = self._dashboard_maker(
+            sheet_name=sheet_name,
+            workbook=workbook,
+            df=df,
+            formatter=formatter
+        )
+        dashboard.write_to_sheet(sheet_name)
+        workbook.close()
 
-        new_dash.load_prev_dashboard(self.prev_dash_path)
+    def create_master_dashboard(self, out_path: [str, Path], sheet_name: str = "Dashboard", ):
 
-        new_dash.load_bst(self.bst_path)
+        self._create_dashboard(out_path, self.consolidator.master, sheet_name, )
 
-        new_dash.load_pm(self.pm_sheets_path, all_in_path=True)
+    def get_pm_out_path(self, out_path: [str, Path], name, new_folder: str = None):
+        if new_folder:
+            out_path = out_path / new_folder / f"{name}.xlsx"
+        else:
+            out_path = out_path / f"{name}.xlsx"
 
-        new_dash.export(self.out_path)
+        out_path.parent.mkdir(exist_ok=True, parents=True)
+        return out_path
+
+    def create_project_manager_sheets(self,
+                                      out_path: [str, Path],
+                                      new_folder: str = None,
+                                      sheet_name: str = "Dashboard", ):
+
+        for pm in self.consolidator.project_managers:
+            pm_df = self.consolidator.filter_by_project_manager(pm)
+
+            # Index's will be the same as in the master, so need to reset it so it starts at row 1 again
+            pm_df = reset_index(pm_df)
+            pm_out_path = self.get_pm_out_path(out_path, name=pm, new_folder=new_folder)
+
+            self._create_dashboard(pm_out_path, pm_df, sheet_name, )
 
 
 if __name__ == "__main__":
 
-    #     #TODO: Test code here
-    #     # bst_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\tmp\bst\sydney_water_bst.xlsx")
-
-    #     # output_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\tmp\bst")
-
-    #     # new_dash = Dashboard(client="Sydney Water", workbook_name="Sydney Water Dashboard")
-
-    #     # new_dash.load_bst(bst_path)
-
-    #     # new_dash.export(output_path)
-
     #     #TODO: Sydney trains here
 
-    dash_month = "July 2021"
+    config_path = Path().cwd() / "config_excel.yaml"
+    exclusions_path = Path().cwd() / "exclusions.yml"
 
-    # parent = Path(r"\\gis010495\c$\Users\kschroder-turner\OneDrive - GHD\Projects\Misc\st_dashboard\data\Monthly
-    # Dashboards\July 2020")
+    test_out = Path().cwd() / "test"
+    test_out.mkdir(exist_ok=True)
 
-    parent = Path(
-        r"C:\Users\kschroder-turner\OneDrive - GHD\Projects\Misc\st_dashboard\data\Monthly Dashboards"
-    ) / dash_month
+    bst_path = Path().cwd() / "test_data" / "Project Detail.xlsx"
+    prev_dash = Path().cwd() / "test_data" / "Dashboard.xlsx"
+    pm_sheets_path = Path().cwd() / "test_data" / "Project Manager Sheets"
 
-    prev_dash_path = parent / "PREV" / "Dashboard.xlsx"
+    dashboard = DashboardGenerator(
+        config_path=config_path,
+        exclusions_file_path=exclusions_path,
+        issue=6
+    )
 
-    # output_path = Path(r"\\teams.ghd.com@SSL\DavWWWRoot\operations\SOCSydneyTrainsPanel\Documents\Monthly
-    # Dashboards") / dash_month
-    output_path = parent  # / "test"
-    output_path.mkdir(parents=True, exist_ok=True)
+    dashboard.load_bst(bst_path)
 
-    # output_path = Path(r"C:\Users\kschroder-turner\Documents\TEMP\Monthly Dashboards\November 2019")
+    dashboard.load_pm_sheets(pm_sheets_path)
 
-    pm_sheets_path = parent / "PM"
+    dashboard.create_consolidator()
 
-    bst_path = parent / "BST" / "Project Detail.xlsx"
+    dashboard.update_master_with_pm()
 
-    new_dash = Dashboard(client="Sydney Trains", )
+    dashboard.create_master_dashboard(test_out / "test.xlsx")
 
-    new_dash.load_prev_dashboard(prev_dash_path)
-
-    new_dash.load_bst(bst_path)
-
-    #     new_dash.show_new()
-    #
-    new_dash.load_pm(pm_sheets_path, all_in_path=True)
-
-    new_dash.export(output_path, pm=False)
+    # dashboard.create_project_manager_sheets(test_out, new_folder="Project Manager Sheets" )

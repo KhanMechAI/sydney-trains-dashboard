@@ -183,7 +183,7 @@ EXCLUSIONS = {
 #TODO: Make .exe version
 #TODO: Fix the data_path and directory bug. Access the sharepoint directly.
 #TODO: Need to be able to customise the month based on current month. Annette could possibly just use the script to change the month
-#TODO: Copy last month's data into new sheet for current month
+#TODO: Copy last month's test_data into new sheet for current month
 #TODO: Comment the code
 #TODO: Add to github then create a markdown user guide.
 #TODO: Fix dates copying over as numbers
@@ -248,7 +248,7 @@ def _export_pm_sheets(df):
         _output_dir.mkdir()
     for name in _all_pms: 
         _name = _output_dir / Path(str(name)+XLSX) #Generate file data_path and name for PM
-        _df = df[df[PM]==name] #Extract PM data from main dataframe
+        _df = df[df[PM]==name] #Extract PM test_data from main dataframe
         _export_sheet(_name, _df, sheet_name=SHEET1_NAME)
     return
 
@@ -257,10 +257,10 @@ def _export_sheet(file_path, df, sheet_name, new_data={}, is_pm=True):
     _ws.protect() #Lock all the cells
     _header_format(_wb, _ws) #Format the header cells
     _cell_range = _editable_cell_range(df) #Get the range of editable cells
-    _data_validation(_ws, df, PHASE, PHASE_D_VAL)#Set up data validation
+    _data_validation(_ws, df, PHASE, PHASE_D_VAL)#Set up test_data validation
     _data_validation(_ws, df, SCH, SCHEDULE_D_VAL) 
     _data_validation(_ws, df, ACTION_BY, ACTION_D_VAL)
-    _format_cells(_wb, _ws, _cell_range, df=df, is_pm=is_pm, new_data=new_data) #Unlock the desired range of editable cells and paste in data
+    _format_cells(_wb, _ws, _cell_range, df=df, is_pm=is_pm, new_data=new_data) #Unlock the desired range of editable cells and paste in test_data
     _sheet_setup(_ws, df)
     _wr.save()#Save the workbook
     return
