@@ -1,6 +1,6 @@
 from tkinter import Tk, Label, Button, Entry, filedialog
-import Dashboard
-from Dashboard import MakeDashboard
+import dashboard
+from dashboard import MakeDashboard
 
 
 class MyFirstGUI:
