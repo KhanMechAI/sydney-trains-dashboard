@@ -1,5 +1,4 @@
 from tkinter import Tk, Label, Button, Entry, filedialog
-import dashboard
 from dashboard import MakeDashboard
 
 

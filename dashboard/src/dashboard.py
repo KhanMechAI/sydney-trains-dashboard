@@ -3,39 +3,18 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 import dynamic_yaml
-import numpy as np
 import pandas as pd
 
 # Directory constants
-from dashboard.excel import ExcelFormats, ExcelGenerator
-from dashboard.utils import resolve_list
+from excel import ExcelFormats, ExcelGenerator
+from utils import drop_empty_rows, reset_index, resolve_list
 
 # TODO make it be able to read from a URL.
 
 DASHBOARD_DIRECTORY = r"C:\Users\kschroder-turner\Documents\TEMP\Monthly Dashboards"
 
 
-def reset_index(df, index_start: int = 1):
-    df.reset_index(inplace=True, drop=True)
 
-    # make index start from the new index start point, default index is 0, new default is 1
-    df.index = df.index + index_start
-    return df
-
-
-def drop_empty_rows(df) -> pd.DataFrame:
-    """
-    Pandas doesnt recognise empty string as an empty value. So change all empty strings to nan, then drop and
-    replace all nans with empty strings.
-    """
-    df.replace(["", " "], np.nan, inplace=True)
-    df.dropna(inplace=True, how="all")
-    df.replace(np.nan, "", inplace=True)
-
-    # need to reset index after dropped rows.
-    df = reset_index(df)
-
-    return df
 
 
 class DataLoader:
@@ -266,8 +245,8 @@ class DashboardGenerator:
 
         with open(exclusions_file_path) as file:
             self.exclusions = dynamic_yaml.load(file, recursive=True)
-        self.ghd_logo_path = Path().cwd() / self.config.logos.ghd
-        self.client_logo_path = Path().cwd() / self.config.logos.client
+        self.ghd_logo_path = Path().cwd().parent / self.config.logos.ghd
+        self.client_logo_path = Path().cwd().parent / self.config.logos.client
         self.issue = issue
         self.bst: BSTLoader
         self.previous_dashboard: DataLoader
@@ -420,16 +399,18 @@ class DashboardGenerator:
 if __name__ == "__main__":
 
     #     #TODO: Sydney trains here
+    base_path = Path().cwd()
+    parent_path = base_path.parent
 
-    config_path = Path().cwd() / "config_excel.yaml"
-    exclusions_path = Path().cwd() / "exclusions.yml"
+    config_path = base_path / "config_excel.yaml"
+    exclusions_path = base_path / "exclusions.yml"
 
-    test_out = Path().cwd() / "test"
+    test_out = parent_path / "test"
     test_out.mkdir(exist_ok=True)
 
-    bst_path = Path().cwd() / "test_data" / "Project Detail.xlsx"
-    prev_dash = Path().cwd() / "test_data" / "Dashboard.xlsx"
-    pm_sheets_path = Path().cwd() / "test_data" / "Project Manager Sheets"
+    bst_path = parent_path / "test_data" / "Project Detail.xlsx"
+    prev_dash = parent_path / "test_data" / "Dashboard.xlsx"
+    pm_sheets_path = parent_path / "test_data" / "Project Manager Sheets"
 
     dashboard = DashboardGenerator(
         config_path=config_path,

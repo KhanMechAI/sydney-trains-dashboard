@@ -2,10 +2,8 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 import pandas as pd
-from pathlib import Path
-from typing import Any, Dict, List
 
-import pandas as pd
+from .utils import drop_empty_rows
 
 
 class DataLoader:
