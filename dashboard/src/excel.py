@@ -22,11 +22,13 @@ class ExcelFormats:
                  new_project: Dict,
                  new_pm: Dict,
                  client_project_number_error: Dict,
+                 protection: Dict,
                  header: Dict,
-                 mandatory_cols: List[str],
-                 new_pms: List,
-                 new_projects: List,
-                 client_project_number_errors: List,
+                 mandatory_cols: List[str] = [],
+                 protected_cols: List[str] = [],
+                 new_pms: List = [],
+                 new_projects: List = [],
+                 client_project_number_errors: List = [],
                  ):
         self.workbook = workbook
         self.base = base
@@ -39,7 +41,9 @@ class ExcelFormats:
         self.new_project = new_project
         self.new_pm = new_pm
         self.client_project_number_error = client_project_number_error
+        self.protection = protection
         self.mandatory_cols: List = mandatory_cols
+        self.protected_cols: List = protected_cols
         self.new_pms = new_pms
         self.new_projects = new_projects
         self.client_project_number_errors = client_project_number_errors
@@ -57,6 +61,9 @@ class ExcelFormats:
         check_mandatory_col = True if column in self.mandatory_cols else False
         check_empty_value = True if value in ["", " ", None] else False
         return check_empty_value and check_mandatory_col
+
+    def check_protected_column(self, column):
+        return True if column in self.protected_cols else False
 
     def get_base_format(self):
         return self.workbook.add_format(self.base)
@@ -89,6 +96,9 @@ class ExcelFormats:
 
         if self.check_new_project(project):
             cell_format.update(self.new_project)
+
+        if self.check_protected_column(column):
+            cell_format.update(self.protection)
 
         if self.check_st_project_number_error(project):
             cell_format.update(self.client_project_number_error)
@@ -276,3 +286,7 @@ class ExcelGenerator:
             ranges[col] = (start_row, col_idx, self.data_height, col_idx) # (first_row, first_col, last_row, last_col)
 
         return ranges
+
+    def protect(self, sheet_name):
+        worksheet = self.get_worksheet(sheet_name)
+        worksheet.protect()

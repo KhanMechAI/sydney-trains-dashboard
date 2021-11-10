@@ -127,15 +127,17 @@ class DashboardGenerator:
             new_project=self.config.formats.new_project,
             new_pm=self.config.formats.new_pm,
             client_project_number_error=self.config.formats.client_project_number_error,
+            protection=self.config.formats.protection,
             header=self.config.formats.header,
             mandatory_cols=self.resolver.resolve(self.config.column.lists.mandatory),
+            protected_cols=self.resolver.resolve(self.config.column.lists.protected),
             new_pms=new_pms,
             new_projects=new_projects,
             client_project_number_errors=[],  # Ignoring for now as I dont think we need any more
         )
         return formatter
 
-    def _create_dashboard(self, out_path: [str, Path], df, sheet_name: str = "Dashboard"):
+    def _create_dashboard(self, out_path: [str, Path], df, sheet_name: str = "Dashboard", is_pm: bool = False):
         writer = pd.ExcelWriter(out_path, engine="xlsxwriter")
         workbook = writer.book
         formatter = self.create_formatter(
@@ -152,6 +154,10 @@ class DashboardGenerator:
         )
         dashboard.write_to_sheet(sheet_name)
         dashboard.add_data_validation(sheet_name)
+
+        if is_pm:
+            dashboard.protect(sheet_name)
+
         workbook.close()
 
     def create_master_dashboard(self, out_path: [str, Path], sheet_name: str = "Dashboard", ):
@@ -179,7 +185,7 @@ class DashboardGenerator:
             pm_df = reset_index(pm_df)
             pm_out_path = self.get_pm_out_path(out_path, name=pm, new_folder=new_folder)
 
-            self._create_dashboard(pm_out_path, pm_df, sheet_name, )
+            self._create_dashboard(pm_out_path, pm_df, sheet_name, is_pm=True)
 
 
 if __name__ == "__main__":
@@ -212,8 +218,9 @@ if __name__ == "__main__":
 
     dashboard.create_consolidator()
 
+    dashboard.create_project_manager_sheets(test_out, new_folder="Project Manager Sheets" )
+
     dashboard.update_master_with_pm()
 
     dashboard.create_master_dashboard(test_out / "test.xlsx")
 
-    # dashboard.create_project_manager_sheets(test_out, new_folder="Project Manager Sheets" )
