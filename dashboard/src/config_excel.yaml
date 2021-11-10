@@ -9,6 +9,13 @@ file_type:
 paths:
   project_manager: 'Project Manager Sheets'
 
+filters:
+  proposal_code: 'PP'
+  proposal_lower_bound: 210900000
+  proposal_upper_bound: 210999999
+  project_status: "Inactive"
+
+
 names:
   workbook: 'Dashboard'
   sheet: 'Dashboard'
@@ -70,7 +77,7 @@ formats:
     bold: True
 
 data_validation:
-  phase:
+  Phase:
     validate: 'list'
     source:
       - 'Proposal'
@@ -84,29 +91,25 @@ data_validation:
       - 'Construction Phase Services'
     input_title: 'Select a Project Phase'
     input_message: 'Select a project phase from the list.'
-  schedule:
+  Schedule:
     validate: 'list'
     source:
       - 'On Track'
       - 'At risk of being delayed'
       - 'Behind Schedule'
       - 'On Hold'
-  action:
+  Action By:
     validate: 'list'
     input_title: 'Select A Stakeholder'
     input_message: 'Select either GHD or ST from the drop down'
     source:
       - 'GHD'
       - 'ST'
-      -
-proposal:
-  code: 'PP'
-  lower_bound: 210900000
-  upper_bound: 210999999
 
 column:
   names:
     task_code: 'Task Code' #BST constant
+    project_status: "Project Status" #BST constant
     project_number: 'GHD Project Number'
     c_c_date: 'Contractual Completion Date'
     cur_stat: 'Current Status'

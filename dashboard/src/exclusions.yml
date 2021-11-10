@@ -1,5 +1,5 @@
 ## Exclusions
-project_numbers: [
+GHD Project Number: [
     2127653,
     2125276,
     210921566,
@@ -39,7 +39,7 @@ project_numbers: [
     12540664,
     12510429
 ]
-project_managers: [
+GHD Project Manager: [
     "Winston Wang",
     "Ruevern Barritt",
     "Michael Hastings",

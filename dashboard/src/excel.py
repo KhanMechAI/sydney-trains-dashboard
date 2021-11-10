@@ -1,6 +1,7 @@
 import datetime
+from collections import defaultdict
 from datetime import datetime
-from typing import Dict, List, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 import pandas as pd
 
@@ -130,7 +131,8 @@ class ExcelGenerator:
                  ghd_image_path: str = None,
                  client_image_path: str = None,
                  n_repeat_rows: int = 0,
-                 schedule_col: str = "Schedule"
+                 schedule_col: str = "Schedule",
+                 data_validation: Dict[str, Dict] = {}
                  ):
         self.pm_col = pm_col
         self.project_col = project_col
@@ -145,14 +147,15 @@ class ExcelGenerator:
         self.column_widths = column_widths
         self.df = df
         self.formats: ExcelFormats = formats
+        self.data_validation: Dict[str, Dict] = data_validation
 
     @property
     def data_width(self):
-        return self.df.shape[0]
+        return self.df.shape[1]
 
     @property
     def data_height(self):
-        return self.df.shape[1]
+        return self.df.shape[0]
 
     @property
     def header_string(self):
@@ -217,12 +220,21 @@ class ExcelGenerator:
         worksheet = self.set_print_area(worksheet)
         worksheet.set_paper(self.a3_paper)
 
-    def add_data_validation(self,
-                            range_reference: Tuple[int, int, int, int],
-                            data_validation: Dict[str, str],
-                            sheet_name: str):
+    def _add_data_validation(self,
+                             range_reference: Tuple[int, int, int, int],
+                             data_validation: Dict[str, Any],
+                             sheet_name: str):
         worksheet = self.get_worksheet(sheet_name)
-        worksheet.data_validation(*range_reference, data_validation)
+        worksheet.data_validation(
+            *range_reference,
+            data_validation
+            )
+
+    def add_data_validation(self, sheet_name: str):
+        data_val_column_ranges = self.get_data_val_column_ranges()
+
+        for data_val_col, data_validation in self.data_validation.items():
+            self._add_data_validation(data_val_column_ranges[data_val_col], data_validation, sheet_name)
 
     def write_row(self, worksheet, row, row_idx):
         # To format the entire row, we need to set some of the format arguments before the cell formatting. We pass
@@ -257,3 +269,10 @@ class ExcelGenerator:
             sheet.write(header_row_idx, col_num, col_name, header_format)
             sheet.set_column(col_num, col_num, col_width)
 
+    def get_data_val_column_ranges(self, start_row: int = 1) -> Dict[str, Tuple[int, int, int, int]]:
+        ranges = defaultdict()
+        for col in self.data_validation.keys():
+            col_idx = self.df.columns.get_loc(col)
+            ranges[col] = (start_row, col_idx, self.data_height, col_idx) # (first_row, first_col, last_row, last_col)
+
+        return ranges
