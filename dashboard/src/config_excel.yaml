@@ -1,0 +1,209 @@
+logos:
+  ghd: 'assets\logos\ghd_logo.png'
+  client: 'assets\logos\st_logo.png'
+
+file_type:
+  xlsx: '.xlsx'
+  temp: '~$'
+
+paths:
+  project_manager: 'Project Manager Sheets'
+
+filters:
+  proposal_code: 'PP'
+  proposal_lower_bound: 210900000
+  proposal_upper_bound: 210999999
+  project_status: "Inactive"
+
+
+names:
+  workbook: 'Dashboard'
+  sheet: 'Dashboard'
+
+colours:
+  GHD_BLUE: '#006DA3'
+  WHITE: '#FFFFFF'
+  ON_HOLD_TEXT_COLOUR: '#9c0006'
+  BEHIND_SCHEDULE_TEXT_COLOUR: '#000000'
+  AT_RISK_TEXT_COLOUR: '#9c6500'
+  ON_TRACK_TEXT_COLOUR: '#375623'
+  ON_HOLD_CELL_FILL: '#ffc7ce'
+  BEHIND_SCHEDULE_CELL_FILL: '#FF0000'
+  AT_RISK_CELL_FILL: '#ffeb9c'
+  ON_TRACK_CELL_FILL: '#c6efce'
+  MANDATORY_INPUT_CELL_FILL: '#ff6d4b'
+
+formats:
+  base:
+    bold: False
+    text_wrap: True
+    valign: 'vcenter'
+    align: 'center'
+    border: 1
+    font_name: 'arial'
+    font_size: 10
+    locked: 0
+  header:
+    bold: True
+    text_wrap: True
+    valign: 'vcenter'
+    align: 'center'
+    bg_color: "{colours.GHD_BLUE}"
+    border_color: "{colours.WHITE}"
+    font_color: "{colours.WHITE}"
+    font_size: 11
+  on_hold:
+    bg_color: "{colours.ON_HOLD_CELL_FILL}"
+    font_color: "{colours.ON_HOLD_TEXT_COLOUR}"
+  behind_schedule:
+    bg_color: "{colours.BEHIND_SCHEDULE_CELL_FILL}"
+    font_color: "{colours.BEHIND_SCHEDULE_TEXT_COLOUR}"
+  at_risk:
+    bg_color: "{colours.AT_RISK_CELL_FILL}"
+    font_color: "{colours.AT_RISK_TEXT_COLOUR}"
+  on_track:
+    bg_color: "{colours.ON_TRACK_CELL_FILL}"
+    font_color: "{colours.ON_TRACK_TEXT_COLOUR}"
+  mandatory_input:
+    bg_color: "{colours.MANDATORY_INPUT_CELL_FILL}"
+  new_project:
+    bold: True
+  new_pm:
+    bold: True
+  client_project_number_error:
+    italic: True
+    bold: True
+  protection:
+    locked: 1
+
+data_validation:
+  Phase:
+    validate: 'list'
+    source:
+      - 'Proposal'
+      - 'Condition Assessment'
+      - 'Preliminary Investigation'
+      - 'Options Assessment'
+      - 'Concept Design'
+      - 'Detailed Design'
+      - 'Construction Support'
+      - 'Approve for Construction'
+      - 'Construction Phase Services'
+    input_title: 'Select a Project Phase'
+    input_message: 'Select a project phase from the list.'
+  Schedule:
+    validate: 'list'
+    source:
+      - 'On Track'
+      - 'At risk of being delayed'
+      - 'Behind Schedule'
+      - 'On Hold'
+  Action By:
+    validate: 'list'
+    input_title: 'Select A Stakeholder'
+    input_message: 'Select either GHD or ST from the drop down'
+    source:
+      - 'GHD'
+      - 'ST'
+
+column:
+  names:
+    task_code: 'Task Code' #BST constant
+    project_status: "Project Status" #BST constant
+    project_number: 'GHD Project Number'
+    c_c_date: 'Contractual Completion Date'
+    cur_stat: 'Current Status'
+    f_c_date: 'Forecast Completion Date'
+    pm: 'GHD Project Manager'
+    next_action: 'Next Actions'
+    phase: 'Phase'
+    project: 'Project Name'
+    st_des_man: 'ST Design Manager'
+    st_ref_po: 'ST Purchase Order Number'
+    st_p_num: 'ST Project Number'
+    sch: 'Schedule'
+    comments: 'Comments'
+    action_by: 'Action By'
+  lists:
+    mandatory:
+      - "{column.names.phase}"
+      - "{column.names.sch}"
+      - "{column.names.cur_stat}"
+      - "{column.names.next_action}"
+      - "{column.names.action_by}"
+    col_order:
+      - "{column.names.st_ref_po}"
+      - "{column.names.st_p_num}"
+      - "{column.names.project_number}"
+      - "{column.names.project}"
+      - "{column.names.pm}"
+      - "{column.names.st_des_man}"
+      - "{column.names.phase}"
+      - "{column.names.sch}"
+      - "{column.names.c_c_date}"
+      - "{column.names.f_c_date}"
+      - "{column.names.cur_stat}"
+      - "{column.names.next_action}"
+      - "{column.names.action_by}"
+      - "{column.names.comments}"
+    headers:
+      - "{column.names.project_number}"
+      - "{column.names.st_ref_po}"
+      - "{column.names.st_p_num}"
+      - "{column.names.project}"
+      - "{column.names.pm}"
+      - "{column.names.st_des_man}"
+      - "{column.names.phase}"
+      - "{column.names.sch}"
+      - "{column.names.c_c_date}"
+      - "{column.names.f_c_date}"
+      - "{column.names.cur_stat}"
+      - "{column.names.next_action}"
+      - "{column.names.action_by}"
+      - "{column.names.comments}"
+    bst_cols:
+      - "{column.names.project}"
+      - "{column.names.pm}"
+      - "{column.names.project_number}"
+    date_cols:
+      - "{column.names.c_c_date}"
+      - "{column.names.f_c_date}"
+    protected:
+      - "{column.names.project_number}"
+      - "{column.names.project}"
+      - "{column.names.pm}"
+  widths:
+    - 13
+    - 12
+    - 12
+    - 24
+    - 17
+    - 15
+    - 14
+    - 10
+    - 14
+    - 14
+    - 19
+    - 24
+    - 7
+    - 110
+
+mapping:
+  bst:
+    Project Manager Name: "{column.names.pm}"
+    Project Name: "{column.names.project}"
+    Project Code: "{column.names.project_number}"
+  legacy:
+    GHD Job Number: "{column.names.project_number}"
+
+margins:
+  cm:
+    left: 0.6
+    right: 0.6
+    top: 3
+    bottom: 1.9
+  inch: # same as cm but in inches
+    left: 0.2362205
+    right: 0.2362205
+    top: 1.181102
+    bottom: 0.7480315

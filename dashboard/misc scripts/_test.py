@@ -1,6 +1,6 @@
 import xlsxwriter
 
-workbook = xlsxwriter.Workbook('protection.xlsx')
+workbook = xlsxwriter.Workbook('../protection.xlsx')
 worksheet = workbook.add_worksheet()
 
 # Create some cell formats with protection properties.
