@@ -210,17 +210,23 @@ if __name__ == "__main__":
         issue=6
     )
 
+    # First Load BST
     dashboard.load_bst(bst_path)
 
+    # Then load Previous
     dashboard.load_prev(prev_dash)
 
+    # Load the PM SHeets
     dashboard.load_pm_sheets(pm_sheets_path)
 
+    # Consolidate the BST with previous
     dashboard.create_consolidator()
 
-    dashboard.create_project_manager_sheets(test_out, new_folder="Project Manager Sheets" )
+    # dashboard.create_project_manager_sheets(test_out, new_folder="Project Manager Sheets" )
 
+    # Load PM data to dashboard
     dashboard.update_master_with_pm()
 
+    # generate Dashboard
     dashboard.create_master_dashboard(test_out / "test.xlsx")
 

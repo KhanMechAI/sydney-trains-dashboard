@@ -14,14 +14,19 @@ class DataLoader:
                  data_path: [str, Path],
                  exclusions: Dict[str, List],  # {column string: [list of exclusions]}
                  column_order: List[str],
-                 date_cols: [None, List[str]] = None):
+                 date_cols: [None, List[str]] = None,
+                 ):
 
         self.exclusions = exclusions
         self.column_order = column_order
         self.date_cols: [None, List[str]] = date_cols
         self.df: pd.DataFrame
         self.resolver = DynamicResolver()
-        self.load_data(Path(data_path))
+        self.data_path = data_path
+        self.load_data(Path(self.data_path))
+
+    def __repr__(self):
+        return self.data_path.name
 
     def add_missing_columns(self):
         for col in self.column_order:
@@ -98,7 +103,7 @@ class DataLoader:
         self.df[columns] = ""
 
     def append(self, df_to_append: pd.DataFrame) -> pd.DataFrame:
-        return self.df.append(df_to_append)
+        return self.df.append(df_to_append, verify_integrity=True, ignore_index=True)
 
     def set_column_order(self):
         self.df = self.df[self.column_order]
@@ -204,6 +209,8 @@ class DataConsolidator:
 
         for pm_sheet in self.project_manager_sheets:
             self.pm_df = pm_sheet.append(self.pm_df)
+
+        self.pm_df.drop_duplicates(inplace=True)
 
         self.pm_df = drop_empty_rows(self.pm_df)
 
